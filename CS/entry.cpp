@@ -3,7 +3,6 @@
 #include <boost/filesystem.hpp>
 
 #include <fstream>
-#include <vector>
 
 #include "entry_exception.h"
 
@@ -17,13 +16,21 @@ bool entry::isValid() {
     return expire_time_point > boost::chrono::steady_clock::now();
 }
 
+long entry::remaining(){
+    return boost::chrono::duration_cast<boost::chrono::milliseconds>(expire_time_point - boost::chrono::steady_clock::now()).count();
+}
+
 bool entry::isInRam(){
     return data_ptr!=0;
 }
 
+std::shared_ptr<ndn::Data> entry::getData(){
+    return data_ptr;
+}
+
 void entry::storeToDisk() {
-    int dir_depth = data_ptr->getName().size();
-    for (int i = 1; i < dir_depth; ++i) {
+    size_t dir_depth = data_ptr->getName().size();
+    for (size_t i = 0; i < dir_depth; ++i) {
         if (boost::filesystem::exists(boost::filesystem::path(root_dir + data_ptr->getName().getSubName(0,i).toUri())))
             continue;
         if (!boost::filesystem::create_directory(
@@ -33,17 +40,30 @@ void entry::storeToDisk() {
     std::ofstream file(root_dir + data_ptr->getName().toUri());
     if (file) {
         file.write(reinterpret_cast<const char *>(data_ptr->wireEncode().wire()), data_ptr->wireEncode().size());
-        file.close();
     }
 }
 
-std::shared_ptr<ndn::Data> entry::getData(ndn::Name name){
+void entry::removeFromDisk(ndn::Name name) {
+    boost::filesystem::path path(root_dir + name.toUri());
+    boost::filesystem::remove(path);
+    while((path=path.parent_path()) != root_dir){
+        if(!boost::filesystem::is_empty(path)){
+            break;
+        }else{
+            boost::filesystem::remove(path);
+        }
+    }
+}
+
+std::shared_ptr<ndn::Data> entry::getFromDisk(ndn::Name name){
     std::ifstream file(root_dir + name.toUri());
     if(file) {
-        std::vector<char> data(file.tellg());
-        file.read(&data[0], data.size());
+        std::stringstream ss;
+        ss << file.rdbuf();
         file.close();
-        data_ptr = std::make_shared<ndn::Data>(ndn::Block(reinterpret_cast<const uint8_t *>(&data[0]), data.size()));
+        removeFromDisk(name);
+        return std::make_shared<ndn::Data>(ndn::Block(reinterpret_cast<const uint8_t *>(ss.str().c_str()), ss.str().length()));
     }
-    return data_ptr;
+    return nullptr;
 }
+

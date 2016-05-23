@@ -6,7 +6,7 @@
 
 #include <memory>
 
-class entry{
+class entry {
 private:
     std::shared_ptr<ndn::Data> data_ptr;
     boost::chrono::steady_clock::time_point expire_time_point;
@@ -20,12 +20,22 @@ public:
 
     bool isValid();
 
-    bool isInRam();
+    long remaining();
 
-    void storeToDisk();
+    bool isInRam();
 
     std::shared_ptr<ndn::Data> getData();
 
-    std::shared_ptr<ndn::Data> getData(ndn::Name name);
+    void storeToDisk();
+
+    static void removeFromDisk(ndn::Name name);
+
+    static std::shared_ptr<ndn::Data> getFromDisk(ndn::Name name);
+
+    std::string toString() {
+        return "Data Name: " + data_ptr->getName().toUri() + " have a size of " +
+               std::to_string(data_ptr->wireEncode().value_size()) + " and will be valid for " +
+               std::to_string(remaining()) + "ms (out-dated if negative)";
+    }
 };
 

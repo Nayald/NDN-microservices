@@ -1,5 +1,7 @@
 #include <ndn-cxx/security/key-chain.hpp>
 
+#include <boost/filesystem.hpp>
+
 #include "cs_cache.h"
 
 int main(int argc, char *argv[]) {
@@ -10,6 +12,9 @@ int main(int argc, char *argv[]) {
     kc.signWithSha256(*d);
     entry *e = new entry(d);
     e->storeToDisk();
-    std::cout << d << std::endl;
+    std::cout << e->toString() << std::endl;
+
+
+
     return 0;
 }
