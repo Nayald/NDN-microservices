@@ -5,30 +5,33 @@
 #include <fstream>
 
 #include "entry_exception.h"
+#include "file_exception.h"
 
 std::string entry::root_dir;
+
+entry::entry(){};
 
 entry::entry(std::shared_ptr<ndn::Data> data): data_ptr(data), expire_time_point(boost::chrono::steady_clock::now() + data->getFreshnessPeriod()) {}
 
 entry::~entry() {}
 
-bool entry::isValid() {
+bool entry::isValid() const {
     return expire_time_point > boost::chrono::steady_clock::now();
 }
 
-long entry::remaining(){
+long entry::remaining() const {
     return boost::chrono::duration_cast<boost::chrono::milliseconds>(expire_time_point - boost::chrono::steady_clock::now()).count();
 }
 
-bool entry::isInRam(){
-    return data_ptr!=0;
+void entry::validFor(long milliseconds) {
+    expire_time_point = boost::chrono::steady_clock::now() + boost::chrono::milliseconds(milliseconds);
 }
 
-std::shared_ptr<ndn::Data> entry::getData(){
+std::shared_ptr<ndn::Data> entry::getData() const {
     return data_ptr;
 }
 
-void entry::storeToDisk() {
+void entry::storeToDisk() const {
     size_t dir_depth = data_ptr->getName().size();
     for (size_t i = 0; i < dir_depth; ++i) {
         if (boost::filesystem::exists(boost::filesystem::path(root_dir + data_ptr->getName().getSubName(0,i).toUri())))
@@ -38,8 +41,15 @@ void entry::storeToDisk() {
             throw entry_exception();
     }
     std::ofstream file(root_dir + data_ptr->getName().toUri());
-    if (file) {
-        file.write(reinterpret_cast<const char *>(data_ptr->wireEncode().wire()), data_ptr->wireEncode().size());
+    if(file) {
+        long remaining_time = remaining();
+        file.write((char*)&remaining_time, sizeof(long));
+        size_t size = data_ptr->wireEncode().size();
+        file.write((char*)&size, sizeof(size_t));
+        const uint8_t *raw_packet = data_ptr->wireEncode().wire();
+        file.write(reinterpret_cast<const char*>(raw_packet), size);
+    }else{
+        throw file_exception();
     }
 }
 
@@ -55,15 +65,20 @@ void entry::removeFromDisk(ndn::Name name) {
     }
 }
 
-std::shared_ptr<ndn::Data> entry::getFromDisk(ndn::Name name){
+entry entry::getFromDisk(ndn::Name name){
     std::ifstream file(root_dir + name.toUri());
     if(file) {
-        std::stringstream ss;
-        ss << file.rdbuf();
-        file.close();
+        long expire_time;
+        size_t size;
+        file.read((char*)&expire_time, sizeof(long));
+        file.read((char*)&size, sizeof(size_t));
+        std::vector<char> raw_packet(size);
+        file.read(&raw_packet[0], size);
         removeFromDisk(name);
-        return std::make_shared<ndn::Data>(ndn::Block(reinterpret_cast<const uint8_t *>(ss.str().c_str()), ss.str().length()));
+        auto data_ptr = std::make_shared<ndn::Data>(ndn::Block(&raw_packet[0], size));
+        entry e(data_ptr);
+        e.validFor(expire_time);
+        return e;
     }
-    return nullptr;
 }
 
