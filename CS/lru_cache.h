@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <deque>
 
 #include "cs_cache.h"
@@ -12,11 +13,11 @@ private:
 public:
     lru_cache(uint32_t ram_size, uint32_t disk_size);
 
-    virtual ~lru_cache() override ;
+    virtual ~lru_cache() override;
 
-    virtual void insert(ndn::Data data) override ;
+    virtual void insert(ndn::Data data) override;
 
-    virtual void insert(std::shared_ptr<ndn::Data> data_ptr) override ;
+    virtual void insert(std::shared_ptr<ndn::Data> data_ptr) override;
 
-    virtual std::shared_ptr<ndn::Data> tryGet(ndn::Name name) override ;
+    virtual std::shared_ptr<ndn::Data> tryGet(ndn::Name name) override;
 };
