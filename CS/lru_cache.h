@@ -1,14 +1,14 @@
 #pragma once
 
 #include <map>
-#include <deque>
+#include <list>
 
 #include "cs_cache.h"
 
 class lru_cache : public cs_cache {
 private:
     uint32_t _ram_size, _disk_size;
-    std::deque<ndn::Name> _ram_registery, _disk_registery;
+    std::list<ndn::Name> _ram_registery, _disk_registery;
 
 public:
     lru_cache(uint32_t ram_size, uint32_t disk_size);
