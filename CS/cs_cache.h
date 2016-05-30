@@ -1,23 +1,21 @@
 #pragma once
 
-#include <ndn-cxx/name.hpp>
+#include <ndn-cxx/data.hpp>
 
-#include <unordered_map>
+#include <memory>
 
 #include "entry.h"
 
 class cs_cache {
 protected:
-    std::unordered_map<ndn::Name, entry> _entries;
-
     uint32_t nextPowerOf2(uint32_t n) {
-        n--;
-        n |= n >> 1;
-        n |= n >> 2;
-        n |= n >> 4;
-        n |= n >> 8;
-        n |= n >> 16;
-        return ++n;
+            n--;
+            n |= n >> 1;
+            n |= n >> 2;
+            n |= n >> 4;
+            n |= n >> 8;
+            n |= n >> 16;
+            return ++n;
     }
 
 public:
