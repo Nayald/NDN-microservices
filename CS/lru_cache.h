@@ -10,8 +10,8 @@ private:
     public:
         class node {
         private:
-            node* _prev;
-            node* _next;
+            node *_prev;
+            node *_next;
             entry _value;
 
         public:
@@ -42,7 +42,7 @@ private:
                 return _prev;
             }
 
-            void setPrev(node* prev){
+            void setPrev(node *prev) {
                 _prev = prev;
             }
 
@@ -50,22 +50,22 @@ private:
                 return _next;
             }
 
-            void setNext(node* next){
+            void setNext(node *next) {
                 _next = next;
             }
 
-            entry getValue() const{
+            entry getValue() const {
                 return _value;
             }
 
-            void setValue(entry value){
+            void setValue(entry value) {
                 _value = value;
             }
         };
 
     private:
-        node* _head;
-        node* _tail;
+        node *_head;
+        node *_tail;
         size_t _size;
 
     public:
@@ -82,7 +82,7 @@ private:
             _size = 0;
         }
 
-        void push(node* node) {
+        void push(node *node) {
             if (!_head) {
                 _head = node;
             } else if (_head == _tail) {
@@ -96,7 +96,7 @@ private:
             ++_size;
         }
 
-        node* pop() {
+        node *pop() {
             if (!_head) {
                 return 0;
             } else {
@@ -112,7 +112,7 @@ private:
             }
         }
 
-        node* remove(node *node) {
+        node *remove(node *node) {
             if (node == _head) {
                 _head = node->getNext();
             }
@@ -124,11 +124,11 @@ private:
             return node;
         }
 
-        node *getHead(){
+        node *getHead() {
             return _head;
         }
 
-        size_t size(){
+        size_t size() {
             return _size;
         }
     };

@@ -74,7 +74,7 @@ std::shared_ptr<ndn::Data> lru_cache::tryGet(ndn::Name name) {
     return nullptr;
 }
 
-void lru_cache::checkSize(){
+void lru_cache::checkSize() {
     if (_ram_registery.size() > _ram_size) {
         if (_disk_size > 0) {
             linked_list::node *node_ptr = _ram_registery.pop();
