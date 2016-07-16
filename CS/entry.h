@@ -16,6 +16,8 @@ public:
 
     entry();
 
+    entry(ndn::Data &data);
+
     entry(std::shared_ptr<ndn::Data> data);
 
     ~entry();

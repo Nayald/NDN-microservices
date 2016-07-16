@@ -11,6 +11,10 @@ std::string entry::root_dir;
 
 entry::entry() { }
 
+entry::entry(ndn::Data &data) : data_ptr(std::make_shared<ndn::Data>(data)), expire_time_point(
+        boost::chrono::steady_clock::now() + data.getFreshnessPeriod()) { }
+
+
 entry::entry(std::shared_ptr<ndn::Data> data) : data_ptr(data), expire_time_point(
         boost::chrono::steady_clock::now() + data->getFreshnessPeriod()) { }
 

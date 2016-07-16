@@ -21,7 +21,7 @@ protected:
 public:
     virtual ~cs_cache() { };
 
-    virtual void insert(ndn::Data data) = 0;
+    virtual void insert(ndn::Data &data) = 0;
 
     virtual void insert(std::shared_ptr<ndn::Data> data_ptr) = 0;
 
