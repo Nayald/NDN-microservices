@@ -5,123 +5,118 @@
 
 #include "tcp_server.h"
 
-tcp_server::tcp_session::tcp_session(tcp_server *tcps, boost::asio::ip::tcp::socket socket_in)
+Tcp_server::Tcp_session::Tcp_session(Tcp_server *tcps, std::shared_ptr<boost::asio::ip::tcp::socket> socket_in)
         : _tcps(tcps)
-        , _socket_in(std::move(socket_in))
-        , _socket_out(_socket_in.get_io_service()) { }
+        , _socket_in(std::move(socket_in)) {
+    std::cout << "session start by " << _socket_in->remote_endpoint() << std::endl;
+}
 
-void tcp_server::tcp_session::process(boost::asio::ip::tcp::endpoint endpoint_out) {
-    std::cout << "session start by " << _socket_in.remote_endpoint() << std::endl;
-    boost::system::error_code err;
-    _socket_out.connect(endpoint_out, err);
-    if (!err) {
-        _socket_in.async_read_some(boost::asio::buffer(_buffer_in, 8800),
-                                    boost::bind(&tcp_session::sendToNext,
+void Tcp_server::Tcp_session::process() {
+        _socket_in->async_read_some(boost::asio::buffer(_buffer_in, 8800),
+                                    boost::bind(&Tcp_session::sendToNext,
                                                 shared_from_this(),
                                                 boost::asio::placeholders::error,
                                                 boost::asio::placeholders::bytes_transferred));
-
-        _socket_out.async_read_some(boost::asio::buffer(_buffer_out, 8800),
-                                     boost::bind(&tcp_session::sendToPrev,
-                                                 shared_from_this(),
-                                                 boost::asio::placeholders::error,
-                                                 boost::asio::placeholders::bytes_transferred));
-    } else {
-        std::cout << err.message() << std::endl;
-    }
 }
 
-void tcp_server::tcp_session::sendToNext(const boost::system::error_code &err, size_t bytes_transferred) {
+void Tcp_server::Tcp_session::sendToNext(const boost::system::error_code &err, size_t bytes_transferred) {
     if (!err) {
         std::vector<ndn::Interest> interests;
         interest_flow.append(_buffer_in, bytes_transferred);
 
         //find the interests in the stream
-        findPacket<ndn::Interest>(0x05, interest_flow, interests);
+        findPacket(0x05, interest_flow, interests);
 
-        std::string backward_buffer;
+        //add to pit and append to buffer if transmission is needed
         std::string forward_buffer;
-
-        //for each found interest, check if a data matches in the cache
-        for (auto &interest : interests) {
-            auto data_ptr = _tcps->_cs.tryGet(interest.getName());
-            std::cout << _socket_in.remote_endpoint() << " send Interest with name=" << interest.getName();
-            if (data_ptr) {
-                std::cout << " -> respond with cache" << std::endl;
-                backward_buffer.append(reinterpret_cast<const char *>(data_ptr->wireEncode().wire()),
-                                       data_ptr->wireEncode().size());
-            } else {
-                std::cout << " -> forward to next hop" << std::endl;
+        for(auto& interest : interests){
+            if(_tcps->_pit.insert(interest, _socket_in)) {
                 forward_buffer.append(reinterpret_cast<const char *>(interest.wireEncode().wire()),
                                       interest.wireEncode().size());
+            }else{
+                std::cout << interest.getName() << " too early for retransmission" << std::endl;
             }
         }
 
-        //send back the matching data(s) to the client
-        _socket_in.send(boost::asio::buffer(backward_buffer, backward_buffer.size()));
-
-        //forward the other interest(s) to the next hop
-        _socket_out.async_send(boost::asio::buffer(forward_buffer, forward_buffer.size()),
-                                boost::bind(&tcp_session::receiveFromPrev,
-                                            shared_from_this(),
-                                            boost::asio::placeholders::error));
+        //forward the interest(s) to the next hop
+        boost::asio::write(_tcps->_socket_out, boost::asio::buffer(forward_buffer));
+        process();
+    } else {
+        _tcps->_pit.remove(_socket_in);
     }
 }
 
-void tcp_server::tcp_session::receiveFromPrev(const boost::system::error_code &err) {
-    if (!err) {
-        _socket_in.async_read_some(boost::asio::buffer(_buffer_in, 8800),
-                                    boost::bind(&tcp_session::sendToNext,
-                                                shared_from_this(),
+//----------------------------------------------------------------------------------------------------------------------
+
+Tcp_server::Tcp_server(boost::asio::io_service &ios, std::string host, std::string port)
+        : _acceptor(ios, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 6361))
+        , _socket_out(ios) {
+    _endpoint_out = *boost::asio::ip::tcp::resolver(ios).resolve({boost::asio::ip::tcp::v4(), host, port});
+    _socket_out.connect(_endpoint_out);
+    accept();
+    receiveFromNext();
+}
+
+Tcp_server::~Tcp_server() { }
+
+void Tcp_server::accept() {
+    auto socket_in = std::make_shared<boost::asio::ip::tcp::socket>(_socket_out.get_io_service());
+    _acceptor.async_accept(*socket_in, [this, socket_in](const boost::system::error_code &err) {
+        if (!err) {
+            std::make_shared<Tcp_session>(this, std::move(socket_in))->process();
+        }
+        accept();
+    });
+}
+
+void Tcp_server::receiveFromNext() {
+        _socket_out.async_read_some(boost::asio::buffer(_buffer_out, 8800),
+                                    boost::bind(&Tcp_server::sendToPrev,
+                                                this,
                                                 boost::asio::placeholders::error,
                                                 boost::asio::placeholders::bytes_transferred));
-    }
 }
 
-void tcp_server::tcp_session::sendToPrev(const boost::system::error_code &err, size_t bytes_transferred) {
+void Tcp_server::sendToPrev(const boost::system::error_code &err, size_t bytes_transferred) {
     if (!err) {
         std::vector<ndn::Data> datas;
         data_flow.append(_buffer_out, bytes_transferred);
 
         //find the data in the stream
-        findPacket<ndn::Data>(0x06, data_flow, datas);
+        findPacket(0x06, data_flow, datas);
 
-        std::string buffer;
-
-        //insert all found datas in the cache
-        for (auto &data : datas) {
-            _tcps->_cs.insert(data);
-            buffer.append(reinterpret_cast<const char *>(data.wireEncode().wire()),
-                          data.wireEncode().size());
+        //send all matching datas to client
+        for(const auto& data : datas){
+            //std::cout << data.getName() << std::endl;
+            //if(_pit.get(data.getName()).getFaces().size() > 1)
+            //    std::cout << data.getName() << " " << _pit.get(data.getName()).getFaces().size() << std::endl;
+            for(const auto& socket : _pit.get(data.getName()).getFaces()){
+                try{
+                    //socket->send(boost::asio::buffer(data.wireEncode().wire(), data.wireEncode().size()));
+                    boost::asio::write(*socket, boost::asio::buffer(data.wireEncode().wire(), data.wireEncode().size()));
+                    //std::cout << socket->remote_endpoint() << ": " << data.getName() << std::endl;
+                } catch (const std::exception &e){
+                    std::cerr << e.what() <<  std::endl;
+                }
+            }
+            _pit.remove(data.getName());
         }
 
-        //send all found datas to client
-        _socket_in.async_send(boost::asio::buffer(buffer, buffer.size()),
-                                   boost::bind(&tcp_session::receiveFromNext,
-                                               shared_from_this(),
-                                               boost::asio::placeholders::error));
+        receiveFromNext();
     }
 }
 
-void tcp_server::tcp_session::receiveFromNext(const boost::system::error_code &err) {
-    if (!err) {
-        _socket_out.async_read_some(boost::asio::buffer(_buffer_out, 8800),
-                                     boost::bind(&tcp_session::sendToPrev,
-                                                 shared_from_this(),
-                                                 boost::asio::placeholders::error,
-                                                 boost::asio::placeholders::bytes_transferred));
-    }
-}
+//----------------------------------------------------------------------------------------------------------------------
 
-template <class T>
-void tcp_server::tcp_session::findPacket(uint8_t packetDelimiter, std::string &stream, std::vector<T> &structure){
+template<class T>
+void Tcp_server::findPacket(uint8_t packetDelimiter, std::string &stream, std::vector<T> &structure){
     //find as much as possible packets in the stream
     try {
         do {
             //packet start with the delimiter (for ndn 0x05 or 0x06) so we remove any starting bytes that is not one of them
             stream.erase(0, stream.find(packetDelimiter));
 
-            //in tlv spec the size doesn't the first bytes and itself (at least 1 byte)
+            //in tlv spec the size doesn't count the first byte and itself (at least 1 byte)
             uint64_t size = 2;
 
             //select the lenght of the size, according to tlv format (1, 2, 4 or 8 bytes to read)
@@ -160,7 +155,7 @@ void tcp_server::tcp_session::findPacket(uint8_t packetDelimiter, std::string &s
                 try {
                     structure.emplace_back(ndn::Block(stream.c_str(), size));
                     stream.erase(0, size);
-                } catch (std::exception &e) {
+                } catch (const std::exception &e) {
                     std::cerr << e.what() << std::endl;
                     stream.erase(0, 1);
                 }
@@ -168,28 +163,7 @@ void tcp_server::tcp_session::findPacket(uint8_t packetDelimiter, std::string &s
                 break;
             }
         } while (!stream.empty());
-    } catch (std::exception &e) {
+    } catch (const std::exception &e) {
         std::cerr << e.what() << std::endl;
     }
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-
-tcp_server::tcp_server(boost::asio::io_service &ios, cs_cache &cs, std::string host, std::string port)
-        : _acceptor(ios, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 3000))
-        , _socket_in(ios)
-        , _cs(cs) {
-    _endpoint_out = *boost::asio::ip::tcp::resolver(ios).resolve({boost::asio::ip::tcp::v4(), host, port});
-    accept();
-}
-
-tcp_server::~tcp_server() { }
-
-void tcp_server::accept() {
-    _acceptor.async_accept(_socket_in, [this](const boost::system::error_code &err) {
-        if (!err) {
-            std::make_shared<tcp_session>(this, std::move(_socket_in))->process(_endpoint_out);
-        }
-        accept();
-    });
 }

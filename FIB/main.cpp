@@ -1,4 +1,4 @@
-#include <ndn-cxx/common.hpp>
+#include <ndn-cxx/security/key-chain.hpp>
 
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
@@ -14,9 +14,7 @@ int main(int argc, char *argv[]) {
     boost::asio::io_service ios;
     boost::asio::io_service::work work(ios);
 
-    Tcp_server tcp(ios, "127.0.0.1", "6362");
-
-    signal(SIGINT, signal);
+    Tcp_server tcp(ios, "127.0.0.1", "6363");
 
     try {
         ios.run();

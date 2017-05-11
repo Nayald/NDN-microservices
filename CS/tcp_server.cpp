@@ -176,7 +176,7 @@ void tcp_server::tcp_session::findPacket(uint8_t packetDelimiter, std::string &s
 //----------------------------------------------------------------------------------------------------------------------
 
 tcp_server::tcp_server(boost::asio::io_service &ios, cs_cache &cs, std::string host, std::string port)
-        : _acceptor(ios, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 3000))
+        : _acceptor(ios, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 6360))
         , _socket_in(ios)
         , _cs(cs) {
     _endpoint_out = *boost::asio::ip::tcp::resolver(ios).resolve({boost::asio::ip::tcp::v4(), host, port});

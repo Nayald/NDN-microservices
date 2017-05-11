@@ -10,11 +10,13 @@ void signal(int n) {
     std::cerr << "close" << std::endl;
     exit(0);
 }
-
+// Not enough data in the buffer to fully parse TLV
+// TLV length exceeds buffer length
+// (Block::get) Requested a non-existed type [7] from Block
 int main(int argc, char *argv[]) {
     entry::root_dir = "./cache";
 
-    lru_cache cs = lru_cache(100000, 00);
+    lru_cache cs = lru_cache(100000, 100);
 
     /* auto start = boost::chrono::steady_clock::now();
      ndn::KeyChain kc;
@@ -29,7 +31,7 @@ int main(int argc, char *argv[]) {
     boost::asio::io_service ios;
     boost::asio::io_service::work work(ios);
 
-    tcp_server udp(ios, cs, "127.0.0.1", "6363");
+    tcp_server udp(ios, cs, "127.0.0.1", "6361");
 
     signal(SIGINT, signal);
 
