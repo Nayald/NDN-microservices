@@ -1,0 +1,5 @@
+FROM ndn_microservice/base:latest
+MAINTAINER Xavier Marchal <xavier.marchal@loria.fr>
+COPY NR_ST /NR_ST
+RUN cd /NR_ST && cmake . && make -j2 && mv bin/NR / && cd / && rm -r /NR_ST
+ENTRYPOINT ["/NR"]

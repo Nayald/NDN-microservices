@@ -1,0 +1,4 @@
+FROM ubuntu:latest
+MAINTAINER Xavier Marchal <xavier.marchal@loria.fr>
+RUN apt-get update && apt-get install -y git cmake make build-essential libsqlite3-dev libssl-dev libboost-system-dev libboost-filesystem-dev libboost-date-time-dev libboost-iostreams-dev libboost-regex-dev libboost-program-options-dev libboost-chrono-dev libboost-thread-dev libboost-log-dev python
+RUN git clone --recursive https://github.com/named-data/ndn-cxx.git && cd ndn-cxx && ./waf configure && ./waf && ./waf install && ./waf clean && ldconfig
