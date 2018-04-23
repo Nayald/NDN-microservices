@@ -29,6 +29,9 @@ RAPIDJSON_DIAG_OFF(implicit-fallthrough)
 #ifdef __GNUC__
 RAPIDJSON_DIAG_PUSH
 RAPIDJSON_DIAG_OFF(effc++)
+#if __GNUC__ >= 7
+RAPIDJSON_DIAG_OFF(implicit-fallthrough)
+#endif
 #endif
 
 #ifdef _MSC_VER
@@ -466,7 +469,7 @@ private:
         if (ds.Peek() < '0' || ds.Peek() > '9')
             return false;
         while (ds.Peek() >= '0' && ds.Peek() <= '9') {
-            if (r >= 429496729 && ds.Peek() > '5') // 2^32 - tan.pub = 4294967295
+            if (r >= 429496729 && ds.Peek() > '5') // 2^32 - 1 = 4294967295
                 return false; // overflow
             r = r * 10 + (ds.Take() - '0');
         }

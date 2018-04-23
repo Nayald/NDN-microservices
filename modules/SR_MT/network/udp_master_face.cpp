@@ -26,11 +26,8 @@ const boost::asio::ip::udp::endpoint& UdpMasterFace::UdpSubFace::getEndpoint() {
     return _endpoint;
 }
 
-void UdpMasterFace::UdpSubFace::open(const InterestCallback &interest_callback,
-                                     const DataCallback &data_callback,
-                                     const ErrorCallback &error_callback) {
-    _interest_callback = interest_callback;
-    _data_callback = data_callback;
+void UdpMasterFace::UdpSubFace::open(const Callback &callback, const ErrorCallback &error_callback) {
+    _callback = callback;
     _error_callback = error_callback;
     _timer.expires_from_now(boost::posix_time::seconds(3));
     _timer.async_wait(boost::bind(&UdpSubFace::timerHandler, shared_from_this(), _1, false));
@@ -40,19 +37,9 @@ void UdpMasterFace::UdpSubFace::close() {
     _error_callback(shared_from_this());
 }
 
-void UdpMasterFace::UdpSubFace::send(const std::string &message) {
+void UdpMasterFace::UdpSubFace::send(const NdnPacket &packet) {
     _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), message, _endpoint));
-}
-
-void UdpMasterFace::UdpSubFace::send(const ndn::Interest &interest) {
-    _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size()), _endpoint));
-}
-
-void UdpMasterFace::UdpSubFace::send(const ndn::Data &data) {
-    _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size()), _endpoint));
+    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), packet, _endpoint));
 }
 
 void UdpMasterFace::UdpSubFace::proceedPacket(const char *buffer, size_t size) {
@@ -60,10 +47,10 @@ void UdpMasterFace::UdpSubFace::proceedPacket(const char *buffer, size_t size) {
     try {
         switch (buffer[0]) {
             case 0x05:
-                _interest_callback(shared_from_this(), ndn::Interest(ndn::Block((uint8_t *) buffer, size)));
+                _callback(NdnPacket(buffer, size));
                 break;
             case 0x06:
-                _data_callback(shared_from_this(), ndn::Data(ndn::Block((uint8_t *) buffer, size)));
+                _callback(NdnPacket(buffer, size));
                 break;
             default:
                 break;
@@ -77,7 +64,7 @@ void UdpMasterFace::UdpSubFace::timerHandler(const boost::system::error_code &er
     if (_timer.expires_at() <= boost::asio::deadline_timer::traits_type::now()) {
         if (!last_chance) {
             // endpoint must manifest itself in the given time, else the socket will close (icmp or timeout)
-            _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), "0", _endpoint));
+            _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), NdnPacket("0", 1), _endpoint));
             _timer.expires_from_now(boost::posix_time::seconds(2));
             _timer.async_wait(boost::bind(&UdpSubFace::timerHandler, shared_from_this(), _1, true));
         } else {
@@ -93,8 +80,8 @@ void UdpMasterFace::UdpSubFace::timerHandler(const boost::system::error_code &er
 
 //----------------------------------------------------------------------------------------------------------------------
 
-UdpMasterFace::UdpMasterFace(boost::asio::io_service &ios, size_t max_connection, uint16_t port)
-        : MasterFace(ios, max_connection)
+UdpMasterFace::UdpMasterFace(boost::asio::io_service &ios, uint16_t port)
+        : MasterFace(ios)
         , _local_endpoint(boost::asio::ip::udp::v4(), port)
         , _socket(_ios, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), port))
         , _strand(_ios) {
@@ -105,11 +92,10 @@ std::string UdpMasterFace::getUnderlyingProtocol() const {
     return "UDP";
 }
 
-void UdpMasterFace::listen(const MasterFace::NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
-                           const Face::DataCallback &data_callback, const MasterFace::ErrorCallback &error_callback) {
+void UdpMasterFace::listen(const MasterFace::NotificationCallback &notification_callback, const Face::Callback &face_callback,
+                           const MasterFace::ErrorCallback &error_callback) {
     _notification_callback = notification_callback;
-    _interest_callback = interest_callback;
-    _data_callback = data_callback;
+    _face_callback = face_callback;
     _error_callback = error_callback;
     std::stringstream ss;
     ss << "master face with ID = " << _master_face_id << " listening on udp://" << _local_endpoint;
@@ -124,23 +110,9 @@ void UdpMasterFace::close() {
     }
 }
 
-void UdpMasterFace::sendToAllFaces(const std::string &message) {
+void UdpMasterFace::sendToAllFaces(const NdnPacket &packet) {
     for(const auto &face : _faces) {
-        face.second->send(message);
-    }
-}
-
-void UdpMasterFace::sendToAllFaces(const ndn::Interest &interest) {
-    std::string message((const char *)interest.wireEncode().wire(), interest.wireEncode().size());
-    for(const auto &face : _faces) {
-        face.second->send(message);
-    }
-}
-
-void UdpMasterFace::sendToAllFaces(const ndn::Data &data) {
-    std::string message((const char *)data.wireEncode().wire(), data.wireEncode().size());
-    for(const auto &face : _faces) {
-        face.second->send(message);
+        face.second->send(packet);
     }
 }
 
@@ -156,12 +128,12 @@ void UdpMasterFace::readHandler(const boost::system::error_code &err, size_t byt
         if (it != _faces.end()) {
             face = it->second;
             face->proceedPacket(_buffer, bytes_transferred);
-        } else if (_faces.size() < _max_connection) {
+        } else {
             std::stringstream ss;
             ss << "new connection from udp://" << _remote_endpoint;
             logger::log(logger::INFO, ss.str());
             face = std::make_shared<UdpSubFace>(*this, _remote_endpoint);
-            face->open(_interest_callback, _data_callback, boost::bind(&UdpMasterFace::onFaceError, shared_from_this(), _1));
+            face->open(_face_callback, boost::bind(&UdpMasterFace::onFaceError, shared_from_this(), _1));
             _notification_callback(shared_from_this(), face);
             _faces.emplace(_remote_endpoint, face);
             face->proceedPacket(_buffer, bytes_transferred);
@@ -172,8 +144,8 @@ void UdpMasterFace::readHandler(const boost::system::error_code &err, size_t byt
     }
 }
 
-void UdpMasterFace::sendImpl(const std::string &message, const boost::asio::ip::udp::endpoint &endpoint) {
-    _queue.emplace_back(message, endpoint);
+void UdpMasterFace::sendImpl(const NdnPacket &packet, const boost::asio::ip::udp::endpoint &endpoint) {
+    _queue.emplace_back(packet, endpoint);
     if (_queue.size() == 1) {
         write();
     }
@@ -181,7 +153,7 @@ void UdpMasterFace::sendImpl(const std::string &message, const boost::asio::ip::
 
 void UdpMasterFace::write() {
     auto &message = _queue.front();
-    _socket.async_send_to(boost::asio::buffer(message.first), message.second,
+    _socket.async_send_to(boost::asio::buffer(message.first.getData()), message.second,
                           _strand.wrap(boost::bind(&UdpMasterFace::writeHandler, shared_from_this(), _1, _2)));
 }
 

@@ -9,22 +9,22 @@
 #include <deque>
 #include <vector>
 
-
 class TcpFace : public Face, public std::enable_shared_from_this<TcpFace> {
 public:
-    static const size_t BUFFER_SIZE = 1 << 14; // 8192
+    static const size_t NDN_MAX_PACKET_SIZE = 8800;
+    static const size_t BUFFER_SIZE = 1 << 14;
 
 private:
     bool _skip_connect;
 
     boost::asio::ip::tcp::endpoint _endpoint;
     boost::asio::ip::tcp::socket _socket;
-    boost::asio::strand _strand;
     char _buffer[BUFFER_SIZE];
-    std::string _stream;
-    bool _queue_in_use = false;
-    std::deque<std::string> _queue;
+    size_t _buffer_size = 0;
+    bool is_writing = false;
+    std::deque<NdnPacket> _queue;
 
+    boost::asio::strand _strand;
     boost::asio::deadline_timer _timer;
 
 public:
@@ -42,15 +42,11 @@ public:
 
     std::string getUnderlyingEndpoint() const override;
 
-    void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
+    void open(const Callback &callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 
-    void send(const std::string &message) override;
-
-    void send(const ndn::Interest &interest) override;
-
-    void send(const ndn::Data &data) override;
+    void send(const NdnPacket &packet) override;
 
 private:
     void connect();
@@ -65,7 +61,9 @@ private:
 
     void readHandler(const boost::system::error_code &err, size_t bytes_transferred);
 
-    void sendImpl(const std::string &message);
+    std::vector<NdnPacket> findPackets();
+
+    void sendImpl(const NdnPacket &packet);
 
     void write();
 

@@ -30,9 +30,8 @@ std::string UdpFace::getUnderlyingEndpoint() const {
     return ss.str();
 }
 
-void UdpFace::open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) {
-    _interest_callback = interest_callback;
-    _data_callback = data_callback;
+void UdpFace::open(const Callback &callback, const ErrorCallback &error_callback) {
+    _callback = callback;
     _error_callback = error_callback;
     read();
 }
@@ -41,16 +40,8 @@ void UdpFace::close() {
     _socket.close();
 }
 
-void UdpFace::send(const std::string &message) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), message));
-}
-
-void UdpFace::send(const ndn::Interest &interest) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
-}
-
-void UdpFace::send(const ndn::Data &data) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+void UdpFace::send(const NdnPacket &packet) {
+    _strand.post(boost::bind(&UdpFace::sendImpl, shared_from_this(), packet));
 }
 
 void UdpFace::read() {
@@ -65,13 +56,13 @@ void UdpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
                 switch (_buffer[0]) {
                     case 0x00:
                         // special packet, just echoes it
-                        send("0");
+                        send(NdnPacket("0", 1));
                         break;
                     case 0x05:
-                        _interest_callback(shared_from_this(), ndn::Interest(ndn::Block((uint8_t *) _buffer, bytes_transferred)));
+                        _callback(NdnPacket(_buffer, bytes_transferred));
                         break;
                     case 0x06:
-                        _data_callback(shared_from_this(), ndn::Data(ndn::Block((uint8_t *) _buffer, bytes_transferred)));
+                        _callback(NdnPacket(_buffer, bytes_transferred));
                         break;
                     default:
                         break;
@@ -87,16 +78,15 @@ void UdpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
     }
 }
 
-void UdpFace::sendImpl(const std::string &message) {
-    _queue.push_back(message);
+void UdpFace::sendImpl(const NdnPacket &packet) {
+    _queue.push_back(packet);
     if (_queue.size() == 1) {
         write();
     }
 }
 
 void UdpFace::write() {
-    const std::string& message = _queue.front();
-    _socket.async_send_to(boost::asio::buffer(message), _endpoint,
+    _socket.async_send_to(boost::asio::buffer(_queue.front().getData()), _endpoint,
                           _strand.wrap(boost::bind(&UdpFace::writeHandler, shared_from_this(), _1, _2)));
 }
 

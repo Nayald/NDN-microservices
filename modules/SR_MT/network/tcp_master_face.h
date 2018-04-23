@@ -11,25 +11,21 @@ private:
     uint16_t _port;
     boost::asio::ip::tcp::socket _socket;
     boost::asio::ip::tcp::acceptor _acceptor;
+
     std::unordered_set<std::shared_ptr<Face>> _faces;
 
 public:
-    TcpMasterFace(boost::asio::io_service &ios, size_t max_connection, uint16_t port);
+    TcpMasterFace(boost::asio::io_service &ios, uint16_t port);
 
     ~TcpMasterFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
 
-    void listen(const NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
-                const Face::DataCallback &data_callback, const ErrorCallback &error_callback) override;
+    void listen(const NotificationCallback &notification_callback, const Face::Callback &face_callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 
-    void sendToAllFaces(const std::string &message) override;
-
-    void sendToAllFaces(const ndn::Interest &interest) override;
-
-    void sendToAllFaces(const ndn::Data &data) override;
+    void sendToAllFaces(const NdnPacket &packet) override;
 
 private:
     void accept();

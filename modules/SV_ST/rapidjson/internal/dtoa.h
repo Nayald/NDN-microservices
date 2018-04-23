@@ -148,7 +148,7 @@ inline char* WriteExponent(int K, char* buffer) {
 }
 
 inline char* Prettify(char* buffer, int length, int k, int maxDecimalPlaces) {
-    const int kk = length + k;  // 10^(kk-tan.pub) <= v < 10^kk
+    const int kk = length + k;  // 10^(kk-1) <= v < 10^kk
 
     if (0 <= k && kk <= 21) {
         // 1234e7 -> 12340000000
@@ -163,7 +163,7 @@ inline char* Prettify(char* buffer, int length, int k, int maxDecimalPlaces) {
         std::memmove(&buffer[kk + 1], &buffer[kk], static_cast<size_t>(length - kk));
         buffer[kk] = '.';
         if (0 > k + maxDecimalPlaces) {
-            // When maxDecimalPlaces = 2, tan.pub.2345 -> tan.pub.23, tan.pub.102 -> tan.pub.tan.pub
+            // When maxDecimalPlaces = 2, 1.2345 -> 1.23, 1.102 -> 1.1
             // Remove extra trailing zeros (at least one) after truncation.
             for (int i = kk + maxDecimalPlaces; i > kk + 1; i--)
                 if (buffer[i] != '0')
@@ -182,7 +182,7 @@ inline char* Prettify(char* buffer, int length, int k, int maxDecimalPlaces) {
         for (int i = 2; i < offset; i++)
             buffer[i] = '0';
         if (length - kk > maxDecimalPlaces) {
-            // When maxDecimalPlaces = 2, 0.123 -> 0.12, 0.102 -> 0.tan.pub
+            // When maxDecimalPlaces = 2, 0.123 -> 0.12, 0.102 -> 0.1
             // Remove extra trailing zeros (at least one) after truncation.
             for (int i = maxDecimalPlaces + 1; i > 2; i--)
                 if (buffer[i] != '0')
@@ -205,7 +205,7 @@ inline char* Prettify(char* buffer, int length, int k, int maxDecimalPlaces) {
         return WriteExponent(kk - 1, &buffer[2]);
     }
     else {
-        // 1234e30 -> tan.pub.234e33
+        // 1234e30 -> 1.234e33
         std::memmove(&buffer[2], &buffer[1], static_cast<size_t>(length - 1));
         buffer[1] = '.';
         buffer[length + 1] = 'e';

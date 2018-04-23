@@ -36,6 +36,7 @@
                 <option value="BR">Backward Router</option>
                 <option value="NR">Named Router</option>
                 <option value="SR">Strategy router</option>
+                <option value="SV">Signature Verifier</option>
             </select>
             <input type="submit" value="Send"/><br/>
             <fieldset>
@@ -95,6 +96,7 @@
             <legend>New link</legend>
             Source node: <input type="text" name="source" required/>
             Target node: <input type="text" name="target" required/>
+            As producer: <input type="checkbox" name="as_producer"/>
             <input type="submit" value="Send" />
             <fieldset>
                 <legend>Result</legend>
@@ -129,11 +131,26 @@
         </fieldset>
     </form>
 
-    <form id="scale_node">
+    <form id="new_key">
         <fieldset>
-            <legend>Scale node</legend>
-            Node name: <input type="text" name="name" required/>
-            Number: <input type="text" name="number" required/>
+            <legend>New key</legend>
+            Name: <input type="text" placeholder="/keyname" size="60" name="name" required/>
+            <textarea name="value" cols="72" rows="8" required>
+-----BEGIN PUBLIC KEY-----
+-----END PUBLIC KEY-----
+            </textarea><br/>
+            <input type="submit" value="Send" />
+            <fieldset>
+                <legend>Result</legend>
+                <p class="result"></p>
+            </fieldset>
+        </fieldset>
+    </form>
+
+    <form id="del_key">
+        <fieldset>
+            <legend>Del key</legend>
+            Name: <input type="text" placeholder="/keyname" size="60" name="name" required/>
             <input type="submit" value="Send" />
             <fieldset>
                 <legend>Result</legend>
@@ -157,7 +174,7 @@
                     graph.addEdge(e["source"], e["target"], {face_id: e["face_id"]});
                 });
                 
-                var colors = {"CS": "#66cdaa", "BR": "#ff7373", "NR":"#3399ff", "SR": "#ffd700"}
+                var colors = {"CS": "#66cdaa", "BR": "#ff7373", "NR":"#3399ff", "SR": "#ffd700", "SV": "#ffa500", "PD": "#d776dd"};
 
                 jsnx.draw(graph, {
                     element: "#network",
@@ -273,8 +290,14 @@
             e.preventDefault();
             var form = $(this);
             form.find(".result").html("");
-            $.post('/api/links', JSON.stringify(form.serializeFormJSON()), function(data) {
-                   form.find(".result").html(data);
+            $.post('/api/links',
+                JSON.stringify({
+                    "source": form.find("input[name='source']").val(),
+                    "target": form.find("input[name='target']").val(),
+                    "as_producer": form.find("input[name='as_producer']").is(":checked"),
+                }),
+                function(data) {
+                    form.find(".result").html(data);
             });
         });
 
@@ -299,15 +322,30 @@
             });
         });
 
-        $("#scale_node").submit(function (e) {
+        $("#new_key").submit(function (e) {
             e.preventDefault();
             var form = $(this);
             form.find(".result").html("");
-            $.ajax("/api/scale/" + form.find("input[name='name']").val(), {
-                type:"PUT",
-                data : form.find("input[name='number']").val(),
-                success:function(data) {
-                   form.find(".result").html(data);
+            $.ajax("/api/keys", {
+                type: "PUT",
+                data: JSON.stringify(form.serializeFormJSON()),
+                success: function (data) {
+                    form.find(".result").html(data);
+
+                }
+            });
+        });
+
+        $("#del_key").submit(function (e) {
+            e.preventDefault();
+            var form = $(this);
+            form.find(".result").html("");
+            $.ajax("/api/keys", {
+                type: "DELETE",
+                data: JSON.stringify(form.serializeFormJSON()),
+                success: function (data) {
+                    form.find(".result").html(data);
+
                 }
             });
         });

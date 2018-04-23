@@ -2,6 +2,8 @@
 
 #include <boost/bind.hpp>
 
+#include <sstream>
+
 UdpFace::UdpFace(boost::asio::io_service &ios, const std::string &host, uint16_t port)
         : Face(ios)
         , _endpoint(boost::asio::ip::address::from_string(host), port)
@@ -22,9 +24,13 @@ std::string UdpFace::getUnderlyingProtocol() const {
     return "UDP";
 }
 
-void UdpFace::open(const InterestCallback &interest_callback,
-                   const DataCallback &data_callback,
-                   const ErrorCallback &error_callback) {
+std::string UdpFace::getUnderlyingEndpoint() const {
+    std::stringstream ss;
+    ss << _endpoint;
+    return ss.str();
+}
+
+void UdpFace::open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) {
     _interest_callback = interest_callback;
     _data_callback = data_callback;
     _error_callback = error_callback;

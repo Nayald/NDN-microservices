@@ -25,9 +25,9 @@ class ContentStore : public Module {
     char _command_buffer[65536];
     boost::asio::ip::udp::socket _command_socket;
     boost::asio::ip::udp::endpoint _remote_command_endpoint;
-    boost::asio::ip::udp::endpoint _manager_endpoint;
 
     bool _report_enable = false;
+    boost::asio::ip::udp::endpoint _manager_endpoint;
     boost::asio::deadline_timer _report_timer;
     boost::posix_time::milliseconds _delay_between_report;
     size_t _hit_counter = 0;

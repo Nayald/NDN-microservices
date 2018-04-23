@@ -1,5 +1,5 @@
 FROM ndn_microservice/base:latest
 MAINTAINER Xavier Marchal <xavier.marchal@loria.fr>
-COPY SR_ST /SR_ST
-RUN cd /SR_ST && cmake . && make -j2 && mv bin/SR / && cd / && rm -r /SR_ST
+COPY SR_MT /SR_MT
+RUN cd /SR_MT && cmake . && make -j2 && mv bin/SR / && cd / && rm -r /SR_MT
 ENTRYPOINT ["/SR"]

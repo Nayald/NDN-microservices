@@ -1,8 +1,8 @@
 #include "named_router.h"
 
-#include "ndn-cxx/security/key-chain.hpp"
-
 #include <boost/bind.hpp>
+
+#include "base64.h"
 
 #include "network/tcp_master_face.h"
 #include "network/tcp_face.h"
@@ -52,64 +52,51 @@ void NamedRouter::onConsumerData(const std::shared_ptr<Face> &consumer_face, con
 }
 
 void NamedRouter::onProducerInterest(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest) {
-    static const ndn::Name localhost("/localhost");
-    static const ndn::Name localhop("/localhop");
+    static const ndn::Name localhost("/localhost/nfd/rib/register");
+    static const ndn::Name localhop("/localhop/nfd/rib/register");
     if (localhost.isPrefixOf(interest.getName()) || localhop.isPrefixOf(interest.getName())) {
-        std::string s((const char *)interest.getName().get(4).wire(), interest.getName().get(4).size());
-        while(s[0] != 0x07){
-            switch((uint8_t)s[1]){
-                case 0xFF:
-                    s.erase(0, 10);
-                    break;
-                case 0xFE:
-                    s.erase(0, 6);
-                    break;
-                case 0xFD:
-                    s.erase(0, 4);
-                    break;
-                default:
-                    s.erase(0, 2);
-                    break;
+        try {
+            ndn::Name prefix(interest.getName().get(4).blockFromValue());
+            std::stringstream ss;
+            ss << "face with ID = " << producer_face->getFaceId() << " want to register " << prefix << " name prefix";
+            logger::log(logger::INFO, ss.str());
+            if (_manager_endpoint != boost::asio::ip::udp::endpoint()) {
+                ndn::Name name = interest.getName().getPrefix(-1);
+                std::string message = base64_encode(name.wireEncode().value(), name.wireEncode().value_size());
+                ndn::Signature signature(interest.getName().get(-2).blockFromValue(), interest.getName().get(-1).blockFromValue());
+                std::stringstream ss;
+                ss << R"({"name":")" << _name << R"(", "type":"request", "id":)" << _request_id << R"(, "action":"route_registration", "face_id":)"
+                   << producer_face->getFaceId() << R"(, "prefix":")" << prefix << R"(", "message":")" << message
+                   << R"(", "key_name":")" << signature.getKeyLocator().getName() << R"(", "signature_type":")" << signature.getType()
+                   << R"(", "signature":")" << base64_encode(signature.getValue().value(), signature.getValue().value_size()) << "\"}";
+                _requests.emplace(_request_id, boost::bind(&NamedRouter::onManagerValidation, this, producer_face, interest, prefix, _1));
+                auto timer = std::make_shared<boost::asio::deadline_timer>(_ios);
+                timer->expires_from_now(boost::posix_time::seconds(5));
+                timer->async_wait(boost::bind(&NamedRouter::onTimeout, this, _1, _request_id));
+                _request_timers.emplace(_request_id, timer);
+                ++_request_id;
+                _command_socket.send_to(boost::asio::buffer(ss.str()), _manager_endpoint);
             }
-        }
-        ndn::Name prefix(ndn::Block((uint8_t*)s.c_str(), s.size()));
-        std::stringstream ss;
-        ss << "face with ID = " << producer_face->getFaceId() << " want to register " << prefix << " name prefix";
-        logger::log(logger::INFO, ss.str());
-        if(_manager_endpoint != boost::asio::ip::udp::endpoint()) {
-            ss = std::stringstream();
-            ss << R"({"name":")" << _name << R"(", "type":"request", "id":)" << _request_id << R"(, "action":"route_registration", "face_id":)"
-               << producer_face->getFaceId() << R"(, "prefix":")" << prefix << "\"}";
-            _requests.emplace(_request_id, boost::bind(&NamedRouter::onManagerValidation, this, producer_face, interest, prefix, _1));
-            auto timer = std::make_shared<boost::asio::deadline_timer>(_ios);
-            timer->expires_from_now(boost::posix_time::seconds(5));
-            timer->async_wait(boost::bind(&NamedRouter::onTimeout, this, _1, _request_id));
-            _request_timers.emplace(_request_id, timer);
-            ++_request_id;
-            _command_socket.send_to(boost::asio::buffer(ss.str()), _manager_endpoint);
-        } else {
-            ss = std::stringstream();
-            ss << "no manager endpoint";
-            logger::log(logger::ERROR, ss.str());
+        } catch (const std::exception &e) {
+            return;
         }
     }
 }
 
 void NamedRouter::onManagerValidation(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest, const ndn::Name &prefix, bool result) {
+    std::stringstream ss;
     if (result) {
-        std::stringstream ss;
         ss << prefix << " name prefix accepted by manager for face with ID = " << producer_face->getFaceId();
         logger::log(logger::INFO, ss.str());
         ndn::Data data(interest.getName());
+        // I can't find the content to return in the doc so I just copy paste an existing reply, it's ok for the producers so it's ok for me
         uint8_t content[44] = {0x65, 0x2a, 0x66, 0x01, 0xc8, 0x67, 0x07, 0x53, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x68, 0x1c, 0x07, 0x0d, 0x08, 0x03, 0x63, 0x6f, 0x6d, 0x08, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x69, 0x02, 0x01, 0x0d, 0x6f, 0x01, 0x00, 0x6a, 0x01, 0x00, 0x6c, 0x01, 0x01};
         data.setContent(content, 44);
-        data.setFreshnessPeriod(boost::chrono::milliseconds(0));
-        ndn::KeyChain k;
-        k.sign(data);
+        data.setFreshnessPeriod(ndn::time::milliseconds(0));
+        _keychain.sign(data);
         producer_face->send(data);
         _fib.insert(producer_face, prefix);
     } else {
-        std::stringstream ss;
         ss << prefix << " name prefix refused by manager for face with ID = " << producer_face->getFaceId();
         logger::log(logger::INFO, ss.str());
     }
@@ -139,7 +126,9 @@ void NamedRouter::onMasterFaceError(const std::shared_ptr<MasterFace> &master_fa
     std::stringstream ss;
     ss << "face with ID = " << face->getFaceId() << " from master face with ID = " << master_face->getMasterFaceId() << " can't process normally";
     logger::log(logger::ERROR, ss.str());
-
+    std::stringstream ss1;
+    ss1 << R"({"name":")" << _name << R"(", "type":"report", "action":"producer_disconnection", "face_id":)" << face->getFaceId() << "}";
+    _command_socket.send_to(boost::asio::buffer(ss1.str()), _remote_command_endpoint);
 }
 
 void NamedRouter::onFaceError(const std::shared_ptr<Face> &face) {
@@ -198,10 +187,10 @@ void NamedRouter::commandReadHandler(const boost::system::error_code &err, size_
                                 commandDelFace(document);
                                 break;
                             case ADD_ROUTE:
-                                commandAddRoute(document);
+                                commandAddRoutes(document);
                                 break;
                             case DEL_ROUTE:
-                                commandDelRoute(document);
+                                commandDelRoutes(document);
                                 break;
                             case LIST:
                                 commandList(document);
@@ -308,7 +297,7 @@ void NamedRouter::commandDelFace(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandAddRoute(const rapidjson::Document &document) {
+void NamedRouter::commandAddRoutes(const rapidjson::Document &document) {
     if (document.HasMember("face_id") && document["face_id"].IsUint() && document.HasMember("prefixes") && document["prefixes"].IsArray()) {
         std::stringstream ss;
         ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"add_route", )";
@@ -336,17 +325,29 @@ void NamedRouter::commandAddRoute(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandDelRoute(const rapidjson::Document &document) {
-    if (document.HasMember("face_id") && document["face_id"].IsUint() && document.HasMember("prefix") && document["prefix"].IsString()) {
+void NamedRouter::commandDelRoutes(const rapidjson::Document &document) {
+    if (document.HasMember("face_id") && document["face_id"].IsUint() && document.HasMember("prefixes") && document["prefixes"].IsArray()) {
         std::stringstream ss;
-        ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"add_route", )";
-        auto it = _egress_faces.find(document["face_id"].GetUint());
-        if (it != _egress_faces.end()) {
-            ndn::Name prefix(document["prefix"].GetString());
-            _fib.remove(it->second, prefix);
-            ss << R"("status":"success"})";
+        ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"del_route", )";
+        auto&& prefixes = document["prefixes"].GetArray();
+        if (prefixes.Empty()) {
+            ss << R"("status":"fail", "reason":"empty prefix list"})";
         } else {
-            ss << R"("status":"fail", "reason":"unknown face id"})";
+            auto it = _egress_faces.find(document["face_id"].GetUint());
+            if (it != _egress_faces.end()) {
+                for (auto &prefix : prefixes) {
+                    if (prefix.IsString()) {
+                        ndn::Name name_prefix(prefix.GetString());
+                        _fib.remove(it->second, name_prefix);
+                        std::stringstream ss1;
+                        ss1 << name_prefix << " name removed by manager for face with ID = " << it->second->getFaceId();
+                        logger::log(logger::INFO, ss1.str());
+                    }
+                }
+                ss << R"("status":"success"})";
+            } else {
+                ss << R"("status":"fail", "reason":"unknown face id"})";
+            }
         }
         _command_socket.send_to(boost::asio::buffer(ss.str()), _remote_command_endpoint);
     }

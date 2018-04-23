@@ -30,15 +30,11 @@ public:
 
         const boost::asio::ip::udp::endpoint& getEndpoint();
 
-        void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
+        void open(const Callback &callback, const ErrorCallback &error_callback) override;
 
         void close() override;
 
-        void send(const std::string &message) override;
-
-        void send(const ndn::Interest &interest) override;
-
-        void send(const ndn::Data &data) override;
+        void send(const NdnPacket &packet) override;
 
         void proceedPacket(const char* buffer, size_t size);
 
@@ -52,34 +48,29 @@ private:
     boost::asio::ip::udp::socket _socket;
     boost::asio::strand _strand;
     char _buffer[BUFFER_SIZE];
+
     std::map<boost::asio::ip::udp::endpoint, std::shared_ptr<UdpSubFace>> _faces;
-    bool _queue_in_use = false;
-    std::deque<std::pair<const std::string, const boost::asio::ip::udp::endpoint>> _queue;
+    std::deque<std::pair<const NdnPacket, const boost::asio::ip::udp::endpoint>> _queue;
 
 public:
-    UdpMasterFace(boost::asio::io_service &ios, size_t max_connection, uint16_t port);
+    UdpMasterFace(boost::asio::io_service &ios, uint16_t port);
 
     ~UdpMasterFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
 
-    void listen(const NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
-                const Face::DataCallback &data_callback, const ErrorCallback &error_callback) override;
+    void listen(const NotificationCallback &notification_callback, const Face::Callback &face_callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 
-    void sendToAllFaces(const std::string &message) override;
-
-    void sendToAllFaces(const ndn::Interest &interest) override;
-
-    void sendToAllFaces(const ndn::Data &data) override;
+    void sendToAllFaces(const NdnPacket &packet) override;
 
 private:
     void read();
 
     void readHandler(const boost::system::error_code &err, size_t bytes_transferred);
 
-    void sendImpl(const std::string &message, const boost::asio::ip::udp::endpoint &endpoint);
+    void sendImpl(const NdnPacket &packet, const boost::asio::ip::udp::endpoint &endpoint);
 
     void write();
 

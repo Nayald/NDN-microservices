@@ -1,5 +1,3 @@
-#include <ndn-cxx/common.hpp>
-
 #include "strategy_router.h"
 #include "log/logger.h"
 

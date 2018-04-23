@@ -117,7 +117,7 @@ inline bool StrtodFast(double d, int p, double* result) {
         p = 22;
     }
 
-    if (p >= -22 && p <= 22 && d <= 9007199254740991.0) { // 2^53 - tan.pub
+    if (p >= -22 && p <= 22 && d <= 9007199254740991.0) { // 2^53 - 1
         *result = FastPath(d, p);
         return true;
     }
@@ -125,10 +125,10 @@ inline bool StrtodFast(double d, int p, double* result) {
         return false;
 }
 
-// Compute an approximation and see if it is within tan.pub/2 ULP
+// Compute an approximation and see if it is within 1/2 ULP
 inline bool StrtodDiyFp(const char* decimals, size_t length, size_t decimalPosition, int exp, double* result) {
     uint64_t significand = 0;
-    size_t i = 0;   // 2^64 - tan.pub = 18446744073709551615, 1844674407370955161 = 0x1999999999999999
+    size_t i = 0;   // 2^64 - 1 = 18446744073709551615, 1844674407370955161 = 0x1999999999999999    
     for (; i < length; i++) {
         if (significand  >  RAPIDJSON_UINT64_C2(0x19999999, 0x99999999) ||
             (significand == RAPIDJSON_UINT64_C2(0x19999999, 0x99999999) && decimals[i] > '5'))
@@ -154,7 +154,7 @@ inline bool StrtodDiyFp(const char* decimals, size_t length, size_t decimalPosit
     DiyFp cachedPower = GetCachedPower10(dExp, &actualExp);
     if (actualExp != dExp) {
         static const DiyFp kPow10[] = {
-            DiyFp(RAPIDJSON_UINT64_C2(0xa0000000, 00000000), -60),  // 10^tan.pub
+            DiyFp(RAPIDJSON_UINT64_C2(0xa0000000, 00000000), -60),  // 10^1
             DiyFp(RAPIDJSON_UINT64_C2(0xc8000000, 00000000), -57),  // 10^2
             DiyFp(RAPIDJSON_UINT64_C2(0xfa000000, 00000000), -54),  // 10^3
             DiyFp(RAPIDJSON_UINT64_C2(0x9c400000, 00000000), -50),  // 10^4

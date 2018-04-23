@@ -2,6 +2,7 @@
 
 #include <ndn-cxx/interest.hpp>
 #include <ndn-cxx/data.hpp>
+#include <ndn-cxx/security/key-chain.hpp>
 
 #include <boost/asio.hpp>
 
@@ -26,6 +27,7 @@ class NamedRouter : public Module {
     boost::asio::ip::udp::socket _command_socket;
     boost::asio::ip::udp::endpoint _remote_command_endpoint;
 
+    ndn::KeyChain _keychain;
     size_t _request_id = 1;
     std::map<size_t, std::function<void(bool)>> _requests;
     std::map<size_t, std::shared_ptr<boost::asio::deadline_timer>> _request_timers;
@@ -74,9 +76,9 @@ public:
 
     void commandDelFace(const rapidjson::Document &document);
 
-    void commandAddRoute(const rapidjson::Document &document);
+    void commandAddRoutes(const rapidjson::Document &document);
 
-    void commandDelRoute(const rapidjson::Document &document);
+    void commandDelRoutes(const rapidjson::Document &document);
 
     void commandList(const rapidjson::Document &document);
 };

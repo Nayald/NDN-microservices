@@ -6,8 +6,6 @@
 
 #include "../log/logger.h"
 
-static void findPackets(std::string &stream, std::vector<ndn::Interest> &interests, std::vector<ndn::Data> &datas);
-
 TcpFace::TcpFace(boost::asio::io_service &ios, std::string host, uint16_t port)
         : Face(ios)
         , _skip_connect(false)
@@ -46,11 +44,8 @@ std::string TcpFace::getUnderlyingEndpoint() const {
     return ss.str();
 }
 
-void TcpFace::open(const InterestCallback &interest_callback,
-                   const DataCallback &data_callback,
-                   const ErrorCallback &error_callback) {
-    _interest_callback = interest_callback;
-    _data_callback = data_callback;
+void TcpFace::open(const Callback &callback, const ErrorCallback &error_callback) {
+    _callback = callback;
     _error_callback = error_callback;
     if(!_skip_connect && !_is_connected) {
         connect();
@@ -65,16 +60,8 @@ void TcpFace::close() {
     _socket.close();
 }
 
-void TcpFace::send(const std::string &message) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
-}
-
-void TcpFace::send(const ndn::Interest &interest) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
-}
-
-void TcpFace::send(const ndn::Data &data) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+void TcpFace::send(const NdnPacket &packet) {
+    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), packet));
 }
 
 void TcpFace::connect() {
@@ -113,7 +100,7 @@ void TcpFace::reconnectHandler(const boost::system::error_code &err, size_t rema
     _timer.cancel();
     if(!err) {
         read();
-        if(_queue_in_use) {
+        if(is_writing) {
             write();
         }
     } else if (remaining_attempt > 0 && _is_connected) {
@@ -131,25 +118,73 @@ void TcpFace::reconnectHandler(const boost::system::error_code &err, size_t rema
 }
 
 void TcpFace::read() {
-    boost::asio::async_read(_socket, boost::asio::buffer(_buffer, BUFFER_SIZE), boost::asio::transfer_at_least(1),
+    boost::asio::async_read(_socket, boost::asio::buffer(_buffer + _buffer_size, BUFFER_SIZE - _buffer_size), boost::asio::transfer_at_least(1),
                             boost::bind(&TcpFace::readHandler, shared_from_this(), _1, _2));
 }
 
 void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_transferred) {
     if(!err) {
-        _stream.append(_buffer, bytes_transferred);
-        std::vector<ndn::Interest> interests;
-        std::vector<ndn::Data> datas;
-        findPackets(_stream, interests, datas);
-
-        for (const auto &interest : interests) {
-            _interest_callback(shared_from_this(), interest);
+        _buffer_size += bytes_transferred;
+        char *current = _buffer;
+        char *end = _buffer + _buffer_size;
+        while (current < end) {
+            if ((uint8_t)current[0] == 0x5 || (uint8_t)current[0] == 0x6) {
+                //check length
+                uint64_t size = 0;
+                switch ((uint8_t)current[1]) {
+                    default:
+                        size += (uint8_t)current[1];
+                        size += 2;
+                        break;
+                    case 0xFD:
+                        size += (uint8_t)current[2];
+                        size <<= 8;
+                        size += (uint8_t)current[3];
+                        size += 4;
+                        break;
+                    case 0xFE:
+                        size += (uint8_t)current[2];
+                        size <<= 8;
+                        size += (uint8_t)current[3];
+                        size <<= 8;
+                        size += (uint8_t)current[4];
+                        size <<= 8;
+                        size += (uint8_t)current[5];
+                        size += 6;
+                        break;
+                    case 0xFF:
+                        size += (uint8_t)current[2];
+                        size <<= 8;
+                        size += (uint8_t)current[3];
+                        size <<= 8;
+                        size += (uint8_t)current[4];
+                        size <<= 8;
+                        size += (uint8_t)current[5];
+                        size <<= 8;
+                        size += (uint8_t)current[6];
+                        size <<= 8;
+                        size += (uint8_t)current[7];
+                        size <<= 8;
+                        size += (uint8_t)current[8];
+                        size <<= 8;
+                        size += (uint8_t)current[9];
+                        size += 10;
+                        break;
+                }
+                if (size > NDN_MAX_PACKET_SIZE) {
+                    ++current;
+                } else if (size <= end - current) {
+                    _callback(NdnPacket(current, size));
+                    current += size;
+                } else {
+                    break;
+                }
+            }
         }
-
-        for (const auto &data : datas) {
-            _data_callback(shared_from_this(), data);
+        if (current > end) {
+            std::copy(current, end, _buffer);
+            _buffer_size = end - current;
         }
-
         read();
     } else {
         if(!_skip_connect && _is_connected) {
@@ -163,29 +198,27 @@ void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
     }
 }
 
-void TcpFace::sendImpl(const std::string &message) {
-    _queue.push_back(message);
-    if (_queue_in_use) {
+void TcpFace::sendImpl(const NdnPacket &packet) {
+    _queue.push_back(packet);
+    if (is_writing) {
         return;
     }
-
-    _queue_in_use = true;
+    is_writing = true;
     write();
 }
 
 void TcpFace::write() {
-    const std::string& message = _queue.front();
-    boost::asio::async_write(_socket, boost::asio::buffer(message), _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
+    boost::asio::async_write(_socket, boost::asio::buffer(_queue.front().getData()),
+                             _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
 }
 
 void TcpFace::writeHandler(const boost::system::error_code &err, size_t bytesTransferred) {
     if(!err) {
         _queue.pop_front();
-
         if (!_queue.empty()) {
             write();
         } else {
-            _queue_in_use = false;
+            is_writing = false;
         }
     }
 }
@@ -193,91 +226,5 @@ void TcpFace::writeHandler(const boost::system::error_code &err, size_t bytesTra
 void TcpFace::timerHandler(const boost::system::error_code &err) {
     if (!err) {
         _error_callback(shared_from_this());
-    }
-}
-
-static void findPackets(std::string &stream, std::vector<ndn::Interest> &interests, std::vector<ndn::Data> &datas) {
-    static const char delimiters[] = {0x05 /*Interest*/, 0x06 /*Data*/, 0x64 /*LpHeader*/};
-    // find as much packets as possible in the stream
-    try {
-        do {
-            // packet start with the packetDelimiter (for ndn 0x05 or 0x06) so we remove any starting bytes that is
-            // not packetDelimiter
-            stream.erase(0, stream.find_first_of(delimiters));
-
-            // select the length of the size according to tlv format (0, 2, 4 or 8 bytes to read)
-            uint64_t size = 0;
-            switch ((uint8_t)stream[1]) {
-                default:
-                    size += (uint8_t)stream[1];
-                    size += 2;
-                    break;
-                case 0xFD:
-                    size += (uint8_t)stream[2];
-                    size <<= 8;
-                    size += (uint8_t)stream[3];
-                    size += 4;
-                    break;
-                case 0xFE:
-                    size += (uint8_t)stream[2];
-                    size <<= 8;
-                    size += (uint8_t)stream[3];
-                    size <<= 8;
-                    size += (uint8_t)stream[4];
-                    size <<= 8;
-                    size += (uint8_t)stream[5];
-                    size += 6;
-                    break;
-                case 0xFF:
-                    size += (uint8_t)stream[2];
-                    size <<= 8;
-                    size += (uint8_t)stream[3];
-                    size <<= 8;
-                    size += (uint8_t)stream[4];
-                    size <<= 8;
-                    size += (uint8_t)stream[5];
-                    size <<= 8;
-                    size += (uint8_t)stream[6];
-                    size <<= 8;
-                    size += (uint8_t)stream[7];
-                    size <<= 8;
-                    size += (uint8_t)stream[8];
-                    size <<= 8;
-                    size += (uint8_t)stream[9];
-                    size += 10;
-                    break;
-            }
-
-            // check if the stream have enough bytes else wait for more data in the stream
-            if (size > ndn::MAX_NDN_PACKET_SIZE) {
-                stream.erase(0, 1);
-            } else if (size <= stream.size()) {
-                // try to build the packet object then remove the read bytes from stream, if fail remove the first
-                // byte in order to find the next delimiter
-                try {
-                    switch (stream[0]) {
-                        case 0x05:
-                            interests.emplace_back(ndn::Block((uint8_t*)stream.c_str(), size));
-                            break;
-                        case 0x06:
-                            datas.emplace_back(ndn::Block((uint8_t*)stream.c_str(), size));
-                            break;
-                        case 0x64:
-                            //Lp packets not supported yet
-                            break;
-                        default:
-                            break;
-                    }
-                    stream.erase(0, size);
-                } catch (const std::exception &e) {
-                    std::cerr << e.what() << std::endl;
-                    stream.erase(0, 1);
-                }
-            } else {
-                break;
-            }
-        } while (!stream.empty());
-    } catch (const std::exception &e) {
-        std::cerr << e.what() << std::endl;
     }
 }

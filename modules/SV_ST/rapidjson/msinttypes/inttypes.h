@@ -6,7 +6,7 @@
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 
-//   tan.pub. Redistributions of source code must retain the above copyright notice,
+//   1. Redistributions of source code must retain the above copyright notice,
 //      this list of conditions and the following disclaimer.
 // 
 //   2. Redistributions in binary form must reproduce the above copyright
@@ -59,7 +59,7 @@ typedef struct {
    intmax_t rem;
 } imaxdiv_t;
 
-// 7.8.tan.pub Macros for format specifiers
+// 7.8.1 Macros for format specifiers
 
 #if !defined(__cplusplus) || defined(__STDC_FORMAT_MACROS) // [   See footnote 185 at page 198
 
@@ -275,7 +275,7 @@ typedef struct {
 
 // 7.8.2 Functions for greatest-width integer types
 
-// 7.8.2.tan.pub The imaxabs function
+// 7.8.2.1 The imaxabs function
 #define imaxabs _abs64
 
 // 7.8.2.2 The imaxdiv function

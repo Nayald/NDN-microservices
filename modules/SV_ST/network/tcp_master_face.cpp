@@ -12,23 +12,17 @@ TcpMasterFace::TcpMasterFace(boost::asio::io_service &ios, size_t max_connection
 
 }
 
-TcpMasterFace::~TcpMasterFace() {
-
-}
-
 std::string TcpMasterFace::getUnderlyingProtocol() const {
     return "TCP";
 }
 
-void TcpMasterFace::listen(const NotificationCallback &notification_callback,
-                           const Face::InterestCallback &interest_callback,
-                           const Face::DataCallback &data_callback,
-                           const ErrorCallback &error_callback) {
+void TcpMasterFace::listen(const NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
+                           const Face::DataCallback &data_callback, const ErrorCallback &error_callback) {
     _notification_callback = notification_callback;
     _interest_callback = interest_callback;
     _data_callback = data_callback;
     _error_callback = error_callback;
-    _acceptor.listen(_max_connection);
+    _acceptor.listen(16);
     std::stringstream ss;
     ss << "master face with ID = " << _master_face_id << " listening on tcp://0.0.0.0:" << _port;
     logger::log(logger::INFO, ss.str());
@@ -68,19 +62,16 @@ void TcpMasterFace::accept() {
 
 void TcpMasterFace::acceptHandler(const boost::system::error_code &err) {
     if(!err) {
-        std::stringstream ss;
-        ss << "new connection from tcp://" << _socket.remote_endpoint();
-        logger::log(logger::INFO, ss.str());
-        auto face = std::make_shared<TcpFace>(std::move(_socket));
-        _faces.emplace(face);
-
         if(_faces.size() < _max_connection) {
-            accept();
+            std::stringstream ss;
+            ss << "new connection from tcp://" << _socket.remote_endpoint();
+            logger::log(logger::INFO, ss.str());
+            auto face = std::make_shared<TcpFace>(std::move(_socket));
+            _faces.emplace(face);
+            _notification_callback(shared_from_this(), face);
+            face->open(_interest_callback, _data_callback, boost::bind(&TcpMasterFace::onFaceError, shared_from_this(), _1));
         }
-
-        _notification_callback(shared_from_this(), face);
-        face->open(_interest_callback, _data_callback,
-                   boost::bind(&TcpMasterFace::onFaceError, shared_from_this(), _1));
+        accept();
     } else {
         std::cerr << err.message() << std::endl;
     }
@@ -88,6 +79,5 @@ void TcpMasterFace::acceptHandler(const boost::system::error_code &err) {
 
 void TcpMasterFace::onFaceError(const std::shared_ptr<Face> &face) {
     _faces.erase(face);
-    accept();
     _error_callback(shared_from_this(), face);
 }

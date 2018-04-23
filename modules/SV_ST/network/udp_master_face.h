@@ -26,11 +26,11 @@ public:
 
         std::string getUnderlyingProtocol() const override;
 
+        std::string getUnderlyingEndpoint() const override;
+
         const boost::asio::ip::udp::endpoint& getEndpoint();
 
-        void open(const InterestCallback &interest_callback,
-                  const DataCallback &data_callback,
-                  const ErrorCallback &error_callback) override;
+        void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
         void close() override;
 
@@ -63,10 +63,8 @@ public:
 
     std::string getUnderlyingProtocol() const override;
 
-    void listen(const NotificationCallback &notification_callback,
-                const Face::InterestCallback &interest_callback,
-                const Face::DataCallback &data_callback,
-                const ErrorCallback &error_callback) override;
+    void listen(const NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
+                const Face::DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 

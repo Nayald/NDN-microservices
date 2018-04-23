@@ -67,7 +67,7 @@ public:
             return '\0';
     }
 
-    // tellg() may return -tan.pub when failed. So we count by ourself.
+    // tellg() may return -1 when failed. So we count by ourself.
     size_t Tell() const { return count_; }
 
     Ch* PutBegin() { RAPIDJSON_ASSERT(false); return 0; }

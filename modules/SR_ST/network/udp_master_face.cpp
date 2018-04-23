@@ -42,17 +42,17 @@ void UdpMasterFace::UdpSubFace::close() {
 
 void UdpMasterFace::UdpSubFace::send(const std::string &message) {
     _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), message, _endpoint));
+    _master_face._strand.dispatch(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), message, _endpoint));
 }
 
 void UdpMasterFace::UdpSubFace::send(const ndn::Interest &interest) {
     _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size()), _endpoint));
+    _master_face._strand.dispatch(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size()), _endpoint));
 }
 
 void UdpMasterFace::UdpSubFace::send(const ndn::Data &data) {
     _timer.expires_from_now(boost::posix_time::seconds(3));
-    _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size()), _endpoint));
+    _master_face._strand.dispatch(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size()), _endpoint));
 }
 
 void UdpMasterFace::UdpSubFace::proceedPacket(const char *buffer, size_t size) {
@@ -77,7 +77,7 @@ void UdpMasterFace::UdpSubFace::timerHandler(const boost::system::error_code &er
     if (_timer.expires_at() <= boost::asio::deadline_timer::traits_type::now()) {
         if (!last_chance) {
             // endpoint must manifest itself in the given time, else the socket will close (icmp or timeout)
-            _master_face._strand.post(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), "0", _endpoint));
+            _master_face._strand.dispatch(boost::bind(&UdpMasterFace::sendImpl, _master_face.shared_from_this(), "0", _endpoint));
             _timer.expires_from_now(boost::posix_time::seconds(2));
             _timer.async_wait(boost::bind(&UdpSubFace::timerHandler, shared_from_this(), _1, true));
         } else {

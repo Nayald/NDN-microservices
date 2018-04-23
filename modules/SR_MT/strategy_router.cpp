@@ -1,60 +1,50 @@
 #include "strategy_router.h"
 
-#include "ndn-cxx/security/key-chain.hpp"
-
 #include <boost/bind.hpp>
 
+#include <unordered_map>
+
+#include "multicast_strategy.h"
+#include "failover_strategy.h"
+#include "loadbalancing_strategy.h"
 #include "network/tcp_master_face.h"
 #include "network/tcp_face.h"
 #include "network/udp_master_face.h"
 #include "network/udp_face.h"
-#include "multicast_strategy.h"
-#include "failover_strategy.h"
 #include "log/logger.h"
-#include "loadbalancing_strategy.h"
 
 StrategyRouter::StrategyRouter(const std::string &name, uint16_t local_port, uint16_t local_command_port)
-        : Module(1)
+        : Module(4)
         , _name(name)
-        , _command_socket(_ios, {{}, local_command_port}){
-    _tcp_ingress_master_face = std::make_shared<TcpMasterFace>(_ios, 16, local_port);
-    _udp_ingress_master_face = std::make_shared<UdpMasterFace>(_ios, 16, local_port);
+        , _command_socket(_ios, {{}, local_command_port}) {
+    _tcp_ingress_master_face = std::make_shared<TcpMasterFace>(_ios, local_port);
+    _udp_ingress_master_face = std::make_shared<UdpMasterFace>(_ios, local_port);
 }
 
 void StrategyRouter::run() {
-    _strategy = std::unique_ptr<Strategy>(new MulticastStrategy());
+    _strategy = std::make_shared<MulticastStrategy>();
     _strategy_name = "multicast";
     commandRead();
     _tcp_ingress_master_face->listen(boost::bind(&StrategyRouter::onMasterFaceNotification, this, _1, _2),
-                                     boost::bind(&StrategyRouter::onIngressInterest, this, _1, _2),
-                                     boost::bind(&StrategyRouter::onIngressData, this, _1, _2),
+                                     boost::bind(&StrategyRouter::onIngressPacket, this, _1),
                                      boost::bind(&StrategyRouter::onMasterFaceError, this, _1, _2));
     _udp_ingress_master_face->listen(boost::bind(&StrategyRouter::onMasterFaceNotification, this, _1, _2),
-                                     boost::bind(&StrategyRouter::onIngressInterest, this, _1, _2),
-                                     boost::bind(&StrategyRouter::onIngressData, this, _1, _2),
+                                     boost::bind(&StrategyRouter::onIngressPacket, this, _1),
                                      boost::bind(&StrategyRouter::onMasterFaceError, this, _1, _2));
 }
 
-void StrategyRouter::onIngressInterest(const std::shared_ptr<Face> &ingress_face, const ndn::Interest &interest) {
-    for (const auto& egress_face : _strategy->selectFaces(_egress_faces)) {
-        egress_face->send(interest);
+void StrategyRouter::onIngressPacket(const NdnPacket &packet) {
+    tbb::speculative_spin_rw_mutex::scoped_lock lock(_egress_faces_mutex, false);
+    auto egress_faces = _strategy->selectFaces(_egress_faces);
+    lock.release();
+    for (auto& egress_face : egress_faces) {
+        egress_face->send(packet);
     }
 }
 
-void StrategyRouter::onIngressData(const std::shared_ptr<Face> &ingress_face, const ndn::Data &data) {
-    for (const auto& egress_face : _strategy->selectFaces(_egress_faces)) {
-        egress_face->send(data);
-    }
-}
-
-void StrategyRouter::onEgressInterest(const std::shared_ptr<Face> &egress_face, const ndn::Interest &interest) {
-    _tcp_ingress_master_face->sendToAllFaces(interest);
-    _udp_ingress_master_face->sendToAllFaces(interest);
-}
-
-void StrategyRouter::onEgressData(const std::shared_ptr<Face> &egress_face, const ndn::Data &data) {
-    _tcp_ingress_master_face->sendToAllFaces(data);
-    _udp_ingress_master_face->sendToAllFaces(data);
+void StrategyRouter::onEgressPacket(const NdnPacket &packet) {
+    _tcp_ingress_master_face->sendToAllFaces(packet);
+    _udp_ingress_master_face->sendToAllFaces(packet);
 }
 
 void StrategyRouter::onMasterFaceNotification(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face) {
@@ -73,6 +63,7 @@ void StrategyRouter::onFaceError(const std::shared_ptr<Face> &face) {
     std::stringstream ss;
     ss << "face with ID = " << face->getFaceId() << " can't process normally";
     logger::log(logger::ERROR, ss.str());
+    tbb::speculative_spin_rw_mutex::scoped_lock lock(_egress_faces_mutex, true);
     for (auto& egress_face : _egress_faces) {
         if(egress_face == face) {
             std::swap(egress_face, _egress_faces.back());
@@ -88,14 +79,14 @@ void StrategyRouter::commandRead() {
 }
 
 void StrategyRouter::commandReadHandler(const boost::system::error_code &err, size_t bytes_transferred) {
-    enum action_type {
+    enum ActionType {
         EDIT_CONFIG,
         ADD_FACE,
         DEL_FACE,
         LIST
     };
 
-    static const std::unordered_map<std::string, action_type> ACTIONS = {
+    static const std::unordered_map<std::string, ActionType> ACTIONS = {
             {"edit_config", EDIT_CONFIG},
             {"add_face", ADD_FACE},
             {"del_face", DEL_FACE},
@@ -146,13 +137,13 @@ void StrategyRouter::commandReadHandler(const boost::system::error_code &err, si
 void StrategyRouter::commandEditConfig(const rapidjson::Document &document) {
     std::vector<std::string> changes;
     if (document.HasMember("strategy") && document["strategy"].IsString()) {
-        enum strategy_type {
+        enum StrategyType {
             MULTICAST,
             LOADBALANCING,
             FAILOVER
         };
 
-        static const std::unordered_map<std::string, strategy_type> STRATEGIES = {
+        static const std::unordered_map<std::string, StrategyType> STRATEGIES = {
                 {"multicast", MULTICAST},
                 {"loadbalancing", LOADBALANCING},
                 {"failover", FAILOVER}
@@ -161,18 +152,19 @@ void StrategyRouter::commandEditConfig(const rapidjson::Document &document) {
         bool has_change = false;
         if (document["strategy"].GetString() != _strategy_name) {
             auto it = STRATEGIES.find(document["strategy"].GetString());
+            tbb::speculative_spin_rw_mutex::scoped_lock lock(_egress_faces_mutex, true);
             if (it != STRATEGIES.end()) {
                 switch (it->second) {
                     case MULTICAST:
-                        _strategy = std::unique_ptr<Strategy>(new MulticastStrategy());
+                        _strategy = std::make_shared<MulticastStrategy>();
                         _strategy_name = "multicast";
                         break;
                     case LOADBALANCING:
-                        _strategy = std::unique_ptr<Strategy>(new LoadbalancingStrategy());
+                        _strategy = std::make_shared<LoadbalancingStrategy>();
                         _strategy_name = "loadbalancing";
                         break;
                     case FAILOVER:
-                        _strategy = std::unique_ptr<Strategy>(new FailoverStrategy());
+                        _strategy = std::make_shared<FailoverStrategy>();
                         _strategy_name = "failover";
                         break;
                 }
@@ -223,10 +215,11 @@ void StrategyRouter::commandAddFace(const rapidjson::Document &document) {
                     face = std::make_shared<UdpFace>(_ios, document["address"].GetString(), document["port"].GetUint());
                     break;
             }
+            tbb::speculative_spin_rw_mutex::scoped_lock lock(_egress_faces_mutex, true);
             _egress_faces.push_back(face);
-            face->open(boost::bind(&StrategyRouter::onEgressInterest, this, _1, _2),
-                       boost::bind(&StrategyRouter::onEgressData, this, _1, _2),
+            face->open(boost::bind(&StrategyRouter::onEgressPacket, this, _1),
                        boost::bind(&StrategyRouter::onFaceError, this, _1));
+            lock.release();
             std::stringstream ss;
             ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"add_face", "face_id":)" << face->getFaceId() << "}";
             _command_socket.send_to(boost::asio::buffer(ss.str()), _remote_command_endpoint);
@@ -241,7 +234,7 @@ void StrategyRouter::commandDelFace(const rapidjson::Document &document) {
         for (auto& egress_face : _egress_faces) {
             if (egress_face->getFaceId() == face_id) {
                 egress_face->close();
-                std::swap(egress_face, _egress_faces[_egress_faces.size() - 1]);
+                std::swap(egress_face, _egress_faces.back());
                 _egress_faces.pop_back();
                 ok = true;
                 break;

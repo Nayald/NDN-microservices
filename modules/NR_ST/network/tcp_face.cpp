@@ -66,15 +66,15 @@ void TcpFace::close() {
 }
 
 void TcpFace::send(const std::string &message) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
 }
 
 void TcpFace::send(const ndn::Interest &interest) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
 }
 
 void TcpFace::send(const ndn::Data &data) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
 }
 
 void TcpFace::connect() {

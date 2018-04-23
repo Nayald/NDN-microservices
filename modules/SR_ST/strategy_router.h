@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <vector>
+#include <mutex>
 
 #include "rapidjson/document.h"
 

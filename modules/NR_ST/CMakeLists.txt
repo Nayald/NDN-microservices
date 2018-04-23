@@ -8,7 +8,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Og -g")
 file(GLOB LOGGER_SOURCES log/*.cpp)
 file(GLOB NETWORK_SOURCES network/*.cpp)
 file(GLOB TREE_SOURCES tree/*.cpp)
-set(SOURCE_FILES main.cpp fib.cpp named_router.cpp fib_entry.cpp module.h)
+set(SOURCE_FILES main.cpp fib.cpp named_router.cpp fib_entry.cpp module.h base64.cpp)
 
 find_package(Boost COMPONENTS system chrono thread REQUIRED)
 

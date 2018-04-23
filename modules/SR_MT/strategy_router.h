@@ -1,31 +1,31 @@
 #pragma once
 
-#include <ndn-cxx/interest.hpp>
-#include <ndn-cxx/data.hpp>
-
 #include <boost/asio.hpp>
 
 #include <memory>
 #include <vector>
 
+#include <tbb/spin_rw_mutex.h>
+
 #include "rapidjson/document.h"
 
 #include "module.h"
+#include "strategy.h"
 #include "network/face.h"
 #include "network/master_face.h"
-#include "strategy.h"
 
 class StrategyRouter : public Module {
 private:
     const std::string _name;
 
     std::string _strategy_name;
-    std::unique_ptr<Strategy> _strategy;
+    std::shared_ptr<Strategy> _strategy;
 
     char _command_buffer[65536];
     boost::asio::ip::udp::socket _command_socket;
     boost::asio::ip::udp::endpoint _remote_command_endpoint;
 
+    tbb::speculative_spin_rw_mutex _egress_faces_mutex;
     std::vector<std::shared_ptr<Face>> _egress_faces;
     std::shared_ptr<MasterFace> _tcp_ingress_master_face;
     std::shared_ptr<MasterFace> _udp_ingress_master_face;
@@ -37,13 +37,9 @@ public:
 
     void run() override;
 
-    void onIngressInterest(const std::shared_ptr<Face> &ingress_face, const ndn::Interest &interest);
+    void onIngressPacket(const NdnPacket &packet);
 
-    void onIngressData(const std::shared_ptr<Face> &ingress_face, const ndn::Data &data);
-
-    void onEgressInterest(const std::shared_ptr<Face> &egress_face, const ndn::Interest &interest);
-
-    void onEgressData(const std::shared_ptr<Face> &egress_face, const ndn::Data &data);
+    void onEgressPacket(const NdnPacket &packet);
 
     void onMasterFaceNotification(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face);
 

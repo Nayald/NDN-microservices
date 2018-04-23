@@ -16,22 +16,20 @@ private:
 public:
     TcpMasterFace(boost::asio::io_service &ios, size_t max_connection, uint16_t port);
 
-    ~TcpMasterFace();
+    ~TcpMasterFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
 
-    virtual void listen(const NotificationCallback &notification_callback,
-                        const Face::InterestCallback &interest_callback,
-                        const Face::DataCallback &data_callback,
-                        const ErrorCallback &error_callback) override;
+    void listen(const NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
+                const Face::DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
-    virtual void close() override;
+    void close() override;
 
-    virtual void sendToAllFaces(const std::string &message) override;
+    void sendToAllFaces(const std::string &message) override;
 
-    virtual void sendToAllFaces(const ndn::Interest &interest) override;
+    void sendToAllFaces(const ndn::Interest &interest) override;
 
-    virtual void sendToAllFaces(const ndn::Data &data) override;
+    void sendToAllFaces(const ndn::Data &data) override;
 
 private:
     void accept();

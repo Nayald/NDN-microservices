@@ -259,7 +259,7 @@ void ContentStore::commandDelFace(const rapidjson::Document &document) {
         for (auto& egress_face : _egress_faces) {
             if (egress_face->getFaceId() == face_id) {
                 egress_face->close();
-                std::swap(egress_face, _egress_faces[_egress_faces.size() - 1]);
+                std::swap(egress_face, _egress_faces.back());
                 _egress_faces.pop_back();
                 ok = true;
                 break;
@@ -280,8 +280,8 @@ void ContentStore::commandList(const rapidjson::Document &document) {
 void ContentStore::commandReport(const boost::system::error_code &err) {
     if (!err && _manager_endpoint.address() != boost::asio::ip::address_v4::any() && _manager_endpoint.port() != 0) {
         std::stringstream ss;
-        ss << R"({"name":")" << _name << R"(", "type":"report", "hit_count":)" << _hit_counter << R"(, "miss_count":)" << _miss_counter << "}";
-        _command_socket.send_to(boost::asio::buffer(ss.str()), _remote_command_endpoint);
+        ss << R"({"name":")" << _name << R"(", "type":"report", "action":"cache_status", "hit_count":)" << _hit_counter << R"(, "miss_count":)" << _miss_counter << "}";
+        _command_socket.send_to(boost::asio::buffer(ss.str()), _manager_endpoint);
     }
     if(_report_enable) {
         _report_timer.expires_from_now(_delay_between_report);

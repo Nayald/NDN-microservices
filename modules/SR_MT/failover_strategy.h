@@ -6,7 +6,7 @@ class FailoverStrategy : public Strategy {
 private:
 
 public:
-    FailoverStrategy();
+    FailoverStrategy() = default;
 
     ~FailoverStrategy() override = default;
 

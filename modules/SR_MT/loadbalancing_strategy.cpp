@@ -1,17 +1,15 @@
 #include "loadbalancing_strategy.h"
 
-
-LoadbalancingStrategy::LoadbalancingStrategy() : Strategy() {
-
-}
-
 std::vector<std::shared_ptr<Face>> LoadbalancingStrategy::selectFaces(const std::vector<std::shared_ptr<Face>> &faces) {
+    std::vector<std::shared_ptr<Face>> v;
     if (faces.empty()) {
-        return std::vector<std::shared_ptr<Face>>();
+        return v;
     } else {
+        tbb::spin_mutex::scoped_lock lock(_mutex);
         if (_index >= faces.size()) {
             _index = 0;
         }
-        return {faces[_index++]};
+        v.emplace_back(faces[_index++]);
+        return v;
     }
 }

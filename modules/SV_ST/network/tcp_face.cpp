@@ -2,6 +2,8 @@
 
 #include <boost/bind.hpp>
 
+#include <sstream>
+
 #include "../log/logger.h"
 
 static void findPackets(std::string &stream, std::vector<ndn::Interest> &interests, std::vector<ndn::Data> &datas);
@@ -34,12 +36,14 @@ TcpFace::TcpFace(boost::asio::ip::tcp::socket &&socket)
 
 }
 
-TcpFace::~TcpFace() {
-
-}
-
 std::string TcpFace::getUnderlyingProtocol() const {
     return "TCP";
+}
+
+std::string TcpFace::getUnderlyingEndpoint() const {
+    std::stringstream ss;
+    ss << _endpoint;
+    return ss.str();
 }
 
 void TcpFace::open(const InterestCallback &interest_callback,
@@ -62,15 +66,15 @@ void TcpFace::close() {
 }
 
 void TcpFace::send(const std::string &message) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
 }
 
 void TcpFace::send(const ndn::Interest &interest) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
 }
 
 void TcpFace::send(const ndn::Data &data) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
 }
 
 void TcpFace::connect() {
@@ -114,13 +118,13 @@ void TcpFace::reconnectHandler(const boost::system::error_code &err, size_t rema
         }
     } else if (remaining_attempt > 0 && _is_connected) {
         std::stringstream ss;
-        ss << "wait 1s before next reconnection to " << _endpoint << std::endl;
+        ss << "wait 1s before next reconnection to " << _endpoint;
         logger::log(logger::INFO, ss.str());
         _timer.expires_from_now(boost::posix_time::seconds(1));
         _timer.async_wait(boost::bind(&TcpFace::reconnect, shared_from_this(), remaining_attempt));
     } else {
         std::stringstream ss;
-        ss << "failed to reconnect to " << _endpoint << std::endl;
+        ss << "failed to reconnect to " << _endpoint;
         logger::log(logger::ERROR, ss.str());
         _error_callback(shared_from_this());
     }
@@ -152,7 +156,7 @@ void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
             std::stringstream ss;
             ss << "lost connection to " << _endpoint;
             logger::log(logger::WARNING, ss.str());
-            reconnect(2);
+            reconnect(3);
         } else {
             _error_callback(shared_from_this());
         }
@@ -171,8 +175,7 @@ void TcpFace::sendImpl(const std::string &message) {
 
 void TcpFace::write() {
     const std::string& message = _queue.front();
-    boost::asio::async_write(_socket, boost::asio::buffer(message),
-                             _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
+    boost::asio::async_write(_socket, boost::asio::buffer(message), _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
 }
 
 void TcpFace::writeHandler(const boost::system::error_code &err, size_t bytesTransferred) {
@@ -194,7 +197,7 @@ void TcpFace::timerHandler(const boost::system::error_code &err) {
 }
 
 static void findPackets(std::string &stream, std::vector<ndn::Interest> &interests, std::vector<ndn::Data> &datas) {
-    static const char delimiters[] = {0x05, 0x06};
+    static const char delimiters[] = {0x05 /*Interest*/, 0x06 /*Data*/, 0x64 /*LpHeader*/};
     // find as much packets as possible in the stream
     try {
         do {
@@ -258,6 +261,9 @@ static void findPackets(std::string &stream, std::vector<ndn::Interest> &interes
                             break;
                         case 0x06:
                             datas.emplace_back(ndn::Block((uint8_t*)stream.c_str(), size));
+                            break;
+                        case 0x64:
+                            //Lp packets not supported yet
                             break;
                         default:
                             break;

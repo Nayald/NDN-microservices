@@ -66,15 +66,15 @@ void TcpFace::close() {
 }
 
 void TcpFace::send(const std::string &message) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), message));
 }
 
 void TcpFace::send(const ndn::Interest &interest) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
 }
 
 void TcpFace::send(const ndn::Data &data) {
-    _strand.post(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+    _strand.dispatch(boost::bind(&TcpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
 }
 
 void TcpFace::connect() {
@@ -142,6 +142,8 @@ void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
         std::vector<ndn::Data> datas;
         findPackets(_stream, interests, datas);
 
+        read();
+
         for (const auto &interest : interests) {
             _interest_callback(shared_from_this(), interest);
         }
@@ -149,8 +151,6 @@ void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
         for (const auto &data : datas) {
             _data_callback(shared_from_this(), data);
         }
-
-        read();
     } else {
         if(!_skip_connect && _is_connected) {
             std::stringstream ss;
@@ -168,7 +168,6 @@ void TcpFace::sendImpl(const std::string &message) {
     if (_is_writing) {
         return;
     }
-
     _is_writing = true;
     write();
 }
@@ -181,7 +180,6 @@ void TcpFace::write() {
 void TcpFace::writeHandler(const boost::system::error_code &err, size_t bytesTransferred) {
     if(!err) {
         _queue.pop_front();
-
         if (!_queue.empty()) {
             write();
         } else {

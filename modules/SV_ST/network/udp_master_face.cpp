@@ -2,6 +2,8 @@
 
 #include <boost/bind.hpp>
 
+#include "../log/logger.h"
+
 UdpMasterFace::UdpSubFace::UdpSubFace(UdpMasterFace &master_face, const boost::asio::ip::udp::endpoint &endpoint)
         : Face(master_face.get_io_service())
         , _master_face(master_face)
@@ -12,6 +14,12 @@ UdpMasterFace::UdpSubFace::UdpSubFace(UdpMasterFace &master_face, const boost::a
 
 std::string UdpMasterFace::UdpSubFace::getUnderlyingProtocol() const {
     return "UDP";
+}
+
+std::string UdpMasterFace::UdpSubFace::getUnderlyingEndpoint() const {
+    std::stringstream ss;
+    ss << _endpoint;
+    return ss.str();
 }
 
 const boost::asio::ip::udp::endpoint& UdpMasterFace::UdpSubFace::getEndpoint() {
@@ -73,7 +81,9 @@ void UdpMasterFace::UdpSubFace::timerHandler(const boost::system::error_code &er
             _timer.expires_from_now(boost::posix_time::seconds(2));
             _timer.async_wait(boost::bind(&UdpSubFace::timerHandler, shared_from_this(), _1, true));
         } else {
-            std::cerr << "[INFO] no activity from/to " << _endpoint << " since 5s" << std::endl;
+            std::stringstream ss;
+            ss << "no activity from/to " << _endpoint << " since 5s" << std::endl;
+            logger::log(logger::INFO, ss.str());
             _error_callback(shared_from_this());
         }
     } else {
@@ -95,14 +105,15 @@ std::string UdpMasterFace::getUnderlyingProtocol() const {
     return "UDP";
 }
 
-void UdpMasterFace::listen(const MasterFace::NotificationCallback &notification_callback,
-                           const Face::InterestCallback &interest_callback, const Face::DataCallback &data_callback,
-                           const MasterFace::ErrorCallback &error_callback) {
+void UdpMasterFace::listen(const MasterFace::NotificationCallback &notification_callback, const Face::InterestCallback &interest_callback,
+                           const Face::DataCallback &data_callback, const MasterFace::ErrorCallback &error_callback) {
     _notification_callback = notification_callback;
     _interest_callback = interest_callback;
     _data_callback = data_callback;
     _error_callback = error_callback;
-    std::cerr << "[INFO] master face with ID = " << _master_face_id << " listening on udp://" << _local_endpoint << std::endl;
+    std::stringstream ss;
+    ss << "master face with ID = " << _master_face_id << " listening on udp://" << _local_endpoint;
+    logger::log(logger::INFO, ss.str());
     read();
 }
 
@@ -146,7 +157,9 @@ void UdpMasterFace::readHandler(const boost::system::error_code &err, size_t byt
             face = it->second;
             face->proceedPacket(_buffer, bytes_transferred);
         } else if (_faces.size() < _max_connection) {
-            std::cerr << "[INFO] new connection from udp://" << _remote_endpoint << std::endl;
+            std::stringstream ss;
+            ss << "new connection from udp://" << _remote_endpoint;
+            logger::log(logger::INFO, ss.str());
             face = std::make_shared<UdpSubFace>(*this, _remote_endpoint);
             face->open(_interest_callback, _data_callback, boost::bind(&UdpMasterFace::onFaceError, shared_from_this(), _1));
             _notification_callback(shared_from_this(), face);

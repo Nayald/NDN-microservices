@@ -9,9 +9,7 @@ class Strategy {
 private:
 
 public:
-    Strategy() {
-
-    }
+    Strategy() = default;
 
     virtual ~Strategy() = default;
 

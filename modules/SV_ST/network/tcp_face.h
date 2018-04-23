@@ -12,7 +12,7 @@
 
 class TcpFace : public Face, public std::enable_shared_from_this<TcpFace> {
 public:
-    static const size_t BUFFER_SIZE = 1 << 14;
+    static const size_t BUFFER_SIZE = 1 << 14; // 8192
 
 private:
     bool _skip_connect;
@@ -36,13 +36,13 @@ public:
     // specific constructor for MasterFace, not recommended to use it yourself
     explicit TcpFace(boost::asio::ip::tcp::socket &&socket);
 
-    ~TcpFace();
+    ~TcpFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
 
-    void open(const InterestCallback &interest_callback,
-              const DataCallback &data_callback,
-              const ErrorCallback &error_callback) override;
+    std::string getUnderlyingEndpoint() const override;
+
+    void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 

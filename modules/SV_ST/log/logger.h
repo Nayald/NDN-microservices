@@ -13,7 +13,16 @@ namespace logger {
         ERROR,
     };
 
+    namespace {
+        std::mutex mutex;
+        std::ofstream file;
+        bool is_tee = false;
+        Level level = INFO;
+    }
+
     void setFilename(const std::string &filename);
+
+    void isTee(bool state);
 
     void setMinimalLogLevel(Level level);
 

@@ -20,7 +20,7 @@ private:
     boost::asio::ip::udp::socket _socket;
     boost::asio::strand _strand;
     char _buffer[BUFFER_SIZE];
-    std::deque<std::string> _queue;
+    std::deque<NdnPacket> _queue;
 
     boost::asio::deadline_timer _timer;
 
@@ -36,22 +36,18 @@ public:
 
     std::string getUnderlyingEndpoint() const override;
 
-    void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
+    void open(const Callback &callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 
-    void send(const std::string &message) override;
-
-    void send(const ndn::Interest &interest) override;
-
-    void send(const ndn::Data &data) override;
+    void send(const NdnPacket &packet) override;
 
 private:
     void read();
 
     void readHandler(const boost::system::error_code &err, size_t bytes_transferred);
 
-    void sendImpl(const std::string &message);
+    void sendImpl(const NdnPacket &packet);
 
     void write();
 

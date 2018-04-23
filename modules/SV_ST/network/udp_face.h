@@ -30,13 +30,13 @@ public:
 
     UdpFace(boost::asio::io_service &ios, const boost::asio::ip::udp::endpoint &endpoint);
 
-    ~UdpFace() = default;
+    ~UdpFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
 
-    void open(const InterestCallback &interest_callback,
-              const DataCallback &data_callback,
-              const ErrorCallback &error_callback) override;
+    std::string getUnderlyingEndpoint() const override;
+
+    void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
     void close() override;
 
