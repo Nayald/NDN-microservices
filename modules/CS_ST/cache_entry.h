@@ -14,7 +14,7 @@ public:
 
     ~CacheEntry() = default;
 
-    const ndn::Data getData() const;
+    const ndn::Data& getData() const;
 
     bool isValid() const;
 

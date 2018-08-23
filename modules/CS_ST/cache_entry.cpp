@@ -6,7 +6,7 @@ CacheEntry::CacheEntry(const ndn::Data &data)
 
 }
 
-const ndn::Data CacheEntry::getData() const {
+const ndn::Data& CacheEntry::getData() const {
     return _data;
 }
 
