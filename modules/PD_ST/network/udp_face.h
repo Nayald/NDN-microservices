@@ -20,7 +20,7 @@ private:
     boost::asio::ip::udp::socket _socket;
     boost::asio::strand _strand;
     char _buffer[BUFFER_SIZE];
-    std::deque<std::string> _queue;
+    std::deque<std::shared_ptr<const ndn::Buffer>> _queue;
 
     boost::asio::deadline_timer _timer;
 
@@ -33,6 +33,8 @@ public:
     ~UdpFace() override = default;
 
     std::string getUnderlyingProtocol() const override;
+
+    std::string getUnderlyingEndpoint() const override;
 
     void open(const InterestCallback &interest_callback, const DataCallback &data_callback, const ErrorCallback &error_callback) override;
 
@@ -49,7 +51,7 @@ private:
 
     void readHandler(const boost::system::error_code &err, size_t bytes_transferred);
 
-    void sendImpl(const std::string &message);
+    void sendImpl(std::shared_ptr<const ndn::Buffer> &buffer);
 
     void write();
 

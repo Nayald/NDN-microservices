@@ -1,7 +1,7 @@
 #include <ndn-cxx/common.hpp>
 
 #include "fib.h"
-#include "named_router.h"
+#include "name_router.h"
 #include "log/logger.h"
 
 static bool stop = false;
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
     logger::isTee(true);
     logger::setMinimalLogLevel(logger::INFO);
 
-    NamedRouter nameRouter(name, local_consumer_port, local_producer_port, local_command_port);
+    NameRouter nameRouter(name, local_consumer_port, local_producer_port, local_command_port);
     nameRouter.start();
 
     signal(SIGINT, signal_handler);

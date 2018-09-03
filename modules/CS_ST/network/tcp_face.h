@@ -67,7 +67,7 @@ private:
 
     void readHandler(const boost::system::error_code &err, size_t bytes_transferred);
 
-    void sendImpl(const std::shared_ptr<const ndn::Buffer> &buffer);
+    void sendImpl(std::shared_ptr<const ndn::Buffer> &buffer);
 
     void write();
 

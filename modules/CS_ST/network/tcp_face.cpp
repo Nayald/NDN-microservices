@@ -129,7 +129,8 @@ void TcpFace::reconnectHandler(const boost::system::error_code &err, size_t rema
 }
 
 void TcpFace::read() {
-    boost::asio::async_read(_socket, boost::asio::buffer(_buffer + _buffer_size, BUFFER_SIZE - _buffer_size), boost::asio::transfer_at_least(1),
+    boost::asio::async_read(_socket, boost::asio::buffer(_buffer + _buffer_size, BUFFER_SIZE - _buffer_size),
+                            boost::asio::transfer_at_least(1),
                             boost::bind(&TcpFace::readHandler, shared_from_this(), _1, _2));
 }
 
@@ -225,8 +226,8 @@ void TcpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
     }
 }
 
-void TcpFace::sendImpl(const std::shared_ptr<const ndn::Buffer> &buffer) {
-    _queue.push_back(buffer);
+void TcpFace::sendImpl(std::shared_ptr<const ndn::Buffer> &buffer) {
+    _queue.push_back(std::move(buffer));
     if (_queue_in_use) {
         return;
     }
@@ -236,7 +237,8 @@ void TcpFace::sendImpl(const std::shared_ptr<const ndn::Buffer> &buffer) {
 }
 
 void TcpFace::write() {
-    boost::asio::async_write(_socket, boost::asio::buffer(*_queue.front()), _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
+    boost::asio::async_write(_socket, boost::asio::buffer(*_queue.front()),
+                             _strand.wrap(boost::bind(&TcpFace::writeHandler, shared_from_this(), _1, _2)));
 }
 
 void TcpFace::writeHandler(const boost::system::error_code &err, size_t bytesTransferred) {

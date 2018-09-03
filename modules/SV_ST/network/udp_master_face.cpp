@@ -131,16 +131,14 @@ void UdpMasterFace::sendToAllFaces(const std::string &message) {
 }
 
 void UdpMasterFace::sendToAllFaces(const ndn::Interest &interest) {
-    std::string message((const char *)interest.wireEncode().wire(), interest.wireEncode().size());
     for(const auto &face : _faces) {
-        face.second->send(message);
+        face.second->send(interest);
     }
 }
 
 void UdpMasterFace::sendToAllFaces(const ndn::Data &data) {
-    std::string message((const char *)data.wireEncode().wire(), data.wireEncode().size());
     for(const auto &face : _faces) {
-        face.second->send(message);
+        face.second->send(data);
     }
 }
 

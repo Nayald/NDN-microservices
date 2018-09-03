@@ -1,4 +1,4 @@
-#include "named_router.h"
+#include "name_router.h"
 
 #include <boost/bind.hpp>
 
@@ -10,7 +10,7 @@
 #include "network/udp_face.h"
 #include "log/logger.h"
 
-NamedRouter::NamedRouter(const std::string &name, uint16_t local_consumer_port, uint16_t local_producer_port, uint16_t local_command_port)
+NameRouter::NameRouter(const std::string &name, uint16_t local_consumer_port, uint16_t local_producer_port, uint16_t local_command_port)
         : Module(1)
         , _name(name)
         , _command_socket(_ios, {{}, local_command_port}) {
@@ -20,38 +20,38 @@ NamedRouter::NamedRouter(const std::string &name, uint16_t local_consumer_port, 
     _udp_producer_master_face = std::make_shared<UdpMasterFace>(_ios, 16, local_producer_port);
 }
 
-void NamedRouter::run() {
+void NameRouter::run() {
     commandRead();
-    _tcp_consumer_master_face->listen(boost::bind(&NamedRouter::onMasterFaceNotification, this, _1, _2),
-                                      boost::bind(&NamedRouter::onConsumerInterest, this, _1, _2),
-                                      boost::bind(&NamedRouter::onConsumerData, this, _1, _2),
-                                      boost::bind(&NamedRouter::onMasterFaceError, this, _1, _2));
-    _udp_consumer_master_face->listen(boost::bind(&NamedRouter::onMasterFaceNotification, this, _1, _2),
-                                      boost::bind(&NamedRouter::onConsumerInterest, this, _1, _2),
-                                      boost::bind(&NamedRouter::onConsumerData, this, _1, _2),
-                                      boost::bind(&NamedRouter::onMasterFaceError, this, _1, _2));
-    _tcp_producer_master_face->listen(boost::bind(&NamedRouter::onMasterFaceNotification, this, _1, _2),
-                                      boost::bind(&NamedRouter::onProducerInterest, this, _1, _2),
-                                      boost::bind(&NamedRouter::onProducerData, this, _1, _2),
-                                      boost::bind(&NamedRouter::onMasterFaceError, this, _1, _2));
-    _udp_producer_master_face->listen(boost::bind(&NamedRouter::onMasterFaceNotification, this, _1, _2),
-                                      boost::bind(&NamedRouter::onProducerInterest, this, _1, _2),
-                                      boost::bind(&NamedRouter::onProducerData, this, _1, _2),
-                                      boost::bind(&NamedRouter::onMasterFaceError, this, _1, _2));
+    _tcp_consumer_master_face->listen(boost::bind(&NameRouter::onMasterFaceNotification, this, _1, _2),
+                                      boost::bind(&NameRouter::onConsumerInterest, this, _1, _2),
+                                      boost::bind(&NameRouter::onConsumerData, this, _1, _2),
+                                      boost::bind(&NameRouter::onMasterFaceError, this, _1, _2));
+    _udp_consumer_master_face->listen(boost::bind(&NameRouter::onMasterFaceNotification, this, _1, _2),
+                                      boost::bind(&NameRouter::onConsumerInterest, this, _1, _2),
+                                      boost::bind(&NameRouter::onConsumerData, this, _1, _2),
+                                      boost::bind(&NameRouter::onMasterFaceError, this, _1, _2));
+    _tcp_producer_master_face->listen(boost::bind(&NameRouter::onMasterFaceNotification, this, _1, _2),
+                                      boost::bind(&NameRouter::onProducerInterest, this, _1, _2),
+                                      boost::bind(&NameRouter::onProducerData, this, _1, _2),
+                                      boost::bind(&NameRouter::onMasterFaceError, this, _1, _2));
+    _udp_producer_master_face->listen(boost::bind(&NameRouter::onMasterFaceNotification, this, _1, _2),
+                                      boost::bind(&NameRouter::onProducerInterest, this, _1, _2),
+                                      boost::bind(&NameRouter::onProducerData, this, _1, _2),
+                                      boost::bind(&NameRouter::onMasterFaceError, this, _1, _2));
 }
 
-void NamedRouter::onConsumerInterest(const std::shared_ptr<Face> &consumer_face, const ndn::Interest &interest) {
+void NameRouter::onConsumerInterest(const std::shared_ptr<Face> &consumer_face, const ndn::Interest &interest) {
     auto producer_faces = _fib.get(interest.getName());
     for (const auto& producer_face : producer_faces) {
         producer_face->send(interest);
     }
 }
 
-void NamedRouter::onConsumerData(const std::shared_ptr<Face> &consumer_face, const ndn::Data &data) {
+void NameRouter::onConsumerData(const std::shared_ptr<Face> &consumer_face, const ndn::Data &data) {
     // drop
 }
 
-void NamedRouter::onProducerInterest(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest) {
+void NameRouter::onProducerInterest(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest) {
     static const ndn::Name localhost("/localhost/nfd/rib/register");
     static const ndn::Name localhop("/localhop/nfd/rib/register");
     if (localhost.isPrefixOf(interest.getName()) || localhop.isPrefixOf(interest.getName())) {
@@ -69,10 +69,10 @@ void NamedRouter::onProducerInterest(const std::shared_ptr<Face> &producer_face,
                    << producer_face->getFaceId() << R"(, "prefix":")" << prefix << R"(", "message":")" << message
                    << R"(", "key_name":")" << signature.getKeyLocator().getName() << R"(", "signature_type":")" << signature.getType()
                    << R"(", "signature":")" << base64_encode(signature.getValue().value(), signature.getValue().value_size()) << "\"}";
-                _requests.emplace(_request_id, boost::bind(&NamedRouter::onManagerValidation, this, producer_face, interest, prefix, _1));
+                _requests.emplace(_request_id, boost::bind(&NameRouter::onManagerValidation, this, producer_face, interest, prefix, _1));
                 auto timer = std::make_shared<boost::asio::deadline_timer>(_ios);
                 timer->expires_from_now(boost::posix_time::seconds(5));
-                timer->async_wait(boost::bind(&NamedRouter::onTimeout, this, _1, _request_id));
+                timer->async_wait(boost::bind(&NameRouter::onTimeout, this, _1, _request_id));
                 _request_timers.emplace(_request_id, timer);
                 ++_request_id;
                 _command_socket.send_to(boost::asio::buffer(ss.str()), _manager_endpoint);
@@ -83,7 +83,7 @@ void NamedRouter::onProducerInterest(const std::shared_ptr<Face> &producer_face,
     }
 }
 
-void NamedRouter::onManagerValidation(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest, const ndn::Name &prefix, bool result) {
+void NameRouter::onManagerValidation(const std::shared_ptr<Face> &producer_face, const ndn::Interest &interest, const ndn::Name &prefix, bool result) {
     std::stringstream ss;
     if (result) {
         ss << prefix << " name prefix accepted by manager for face with ID = " << producer_face->getFaceId();
@@ -102,27 +102,27 @@ void NamedRouter::onManagerValidation(const std::shared_ptr<Face> &producer_face
     }
 }
 
-void NamedRouter::onTimeout(const boost::system::error_code &err, size_t index) {
+void NameRouter::onTimeout(const boost::system::error_code &err, size_t index) {
     if (!err) {
         _requests.erase(index);
         _request_timers.erase(index);
     }
 }
 
-void NamedRouter::onProducerData(const std::shared_ptr<Face> &producer_face, const ndn::Data &data) {
-    if (_fib.isPrefix(producer_face, data.getName())) {
+void NameRouter::onProducerData(const std::shared_ptr<Face> &producer_face, const ndn::Data &data) {
+    if (!_check_prefix || _fib.isPrefix(producer_face, data.getName())) {
         _tcp_consumer_master_face->sendToAllFaces(data);
         _udp_consumer_master_face->sendToAllFaces(data);
     }
 }
 
-void NamedRouter::onMasterFaceNotification(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face) {
+void NameRouter::onMasterFaceNotification(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face) {
     std::stringstream ss;
     ss << "new face with ID = " << face->getFaceId() << " form master face with ID = " << master_face->getMasterFaceId();
     logger::log(logger::INFO, ss.str());
 }
 
-void NamedRouter::onMasterFaceError(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face) {
+void NameRouter::onMasterFaceError(const std::shared_ptr<MasterFace> &master_face, const std::shared_ptr<Face> &face) {
     std::stringstream ss;
     ss << "face with ID = " << face->getFaceId() << " from master face with ID = " << master_face->getMasterFaceId() << " can't process normally";
     logger::log(logger::ERROR, ss.str());
@@ -131,7 +131,7 @@ void NamedRouter::onMasterFaceError(const std::shared_ptr<MasterFace> &master_fa
     _command_socket.send_to(boost::asio::buffer(ss1.str()), _remote_command_endpoint);
 }
 
-void NamedRouter::onFaceError(const std::shared_ptr<Face> &face) {
+void NameRouter::onFaceError(const std::shared_ptr<Face> &face) {
     //_fib.remove(face);
     _egress_faces.erase(face->getFaceId());
     std::stringstream ss;
@@ -139,12 +139,12 @@ void NamedRouter::onFaceError(const std::shared_ptr<Face> &face) {
     logger::log(logger::ERROR, ss.str());
 }
 
-void NamedRouter::commandRead() {
+void NameRouter::commandRead() {
     _command_socket.async_receive_from(boost::asio::buffer(_command_buffer, 65536), _remote_command_endpoint,
-                                       boost::bind(&NamedRouter::commandReadHandler, this, _1, _2));
+                                       boost::bind(&NameRouter::commandReadHandler, this, _1, _2));
 }
 
-void NamedRouter::commandReadHandler(const boost::system::error_code &err, size_t bytes_transferred) {
+void NameRouter::commandReadHandler(const boost::system::error_code &err, size_t bytes_transferred) {
     enum action_type {
         REPLY,
         EDIT_CONFIG,
@@ -214,7 +214,7 @@ void NamedRouter::commandReadHandler(const boost::system::error_code &err, size_
     }
 }
 
-void NamedRouter::commandReply(const rapidjson::Document &document) {
+void NameRouter::commandReply(const rapidjson::Document &document) {
     if (document.HasMember("result") && document["result"].IsBool()) {
         auto it = _requests.find(document["id"].GetUint());
         if (it != _requests.end()) {
@@ -223,7 +223,7 @@ void NamedRouter::commandReply(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandEditConfig(const rapidjson::Document &document) {
+void NameRouter::commandEditConfig(const rapidjson::Document &document) {
     std::vector<std::string> changes;
     if (document.HasMember("manager_address") && document.HasMember("manager_port") && document["manager_address"].IsString() && document["manager_port"].IsUint()) {
         bool has_change = false;
@@ -234,6 +234,18 @@ void NamedRouter::commandEditConfig(const rapidjson::Document &document) {
         }
         if (has_change) {
             changes.emplace_back("manager_endpoint");
+        }
+    }
+
+    if (document.HasMember("check_prefix") && document["check_prefix"].IsBool()) {
+        bool has_change = false;
+        bool check_prefix = document["check_prefix"].GetBool();
+        if (check_prefix != _check_prefix) {
+            _check_prefix = check_prefix;
+            has_change = true;
+        }
+        if (has_change) {
+            changes.emplace_back("check_prefix");
         }
     }
 
@@ -252,7 +264,7 @@ void NamedRouter::commandEditConfig(const rapidjson::Document &document) {
     _command_socket.send_to(boost::asio::buffer(ss.str()), _remote_command_endpoint);
 }
 
-void NamedRouter::commandAddFace(const rapidjson::Document &document) {
+void NameRouter::commandAddFace(const rapidjson::Document &document) {
     enum layer_type {
         TCP,
         UDP,
@@ -276,9 +288,9 @@ void NamedRouter::commandAddFace(const rapidjson::Document &document) {
                     face = std::make_shared<UdpFace>(_ios, document["address"].GetString(), document["port"].GetUint());
                     break;
             }
-            face->open(boost::bind(&NamedRouter::onProducerInterest, this, _1, _2),
-                       boost::bind(&NamedRouter::onProducerData, this, _1, _2),
-                       boost::bind(&NamedRouter::onFaceError, this, _1));
+            face->open(boost::bind(&NameRouter::onProducerInterest, this, _1, _2),
+                       boost::bind(&NameRouter::onProducerData, this, _1, _2),
+                       boost::bind(&NameRouter::onFaceError, this, _1));
             _egress_faces.emplace(face->getFaceId(), face);
             std::stringstream ss;
             ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"add_face", "face_id":)" << face->getFaceId() << "}";
@@ -287,7 +299,7 @@ void NamedRouter::commandAddFace(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandDelFace(const rapidjson::Document &document) {
+void NameRouter::commandDelFace(const rapidjson::Document &document) {
     if (document.HasMember("face_id") && document["face_id"].IsUint()) {
         size_t face_id = document["face_id"].GetUint();
         bool ok = _egress_faces.erase(face_id);
@@ -297,7 +309,7 @@ void NamedRouter::commandDelFace(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandAddRoutes(const rapidjson::Document &document) {
+void NameRouter::commandAddRoutes(const rapidjson::Document &document) {
     if (document.HasMember("face_id") && document["face_id"].IsUint() && document.HasMember("prefixes") && document["prefixes"].IsArray()) {
         std::stringstream ss;
         ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"add_route", )";
@@ -325,7 +337,7 @@ void NamedRouter::commandAddRoutes(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandDelRoutes(const rapidjson::Document &document) {
+void NameRouter::commandDelRoutes(const rapidjson::Document &document) {
     if (document.HasMember("face_id") && document["face_id"].IsUint() && document.HasMember("prefixes") && document["prefixes"].IsArray()) {
         std::stringstream ss;
         ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"del_route", )";
@@ -353,7 +365,7 @@ void NamedRouter::commandDelRoutes(const rapidjson::Document &document) {
     }
 }
 
-void NamedRouter::commandList(const rapidjson::Document &document) {
+void NameRouter::commandList(const rapidjson::Document &document) {
     std::stringstream ss;
     ss << R"({"name":")" << _name << R"(", "type":"reply", "id":)" << document["id"].GetUint() << R"(, "action":"list", "table":{"type":"fib", "tree":)" << _fib.toJSON() << "}}";
     _command_socket.send_to(boost::asio::buffer(ss.str()), _remote_command_endpoint);

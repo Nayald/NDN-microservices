@@ -119,7 +119,7 @@ public:
         return _populated_nodes;
     }
 
-    std::shared_ptr<T> find(const ndn::Name &name) const {
+    std::shared_ptr<T> find(const ndn::Name &name) {
         auto it = _nodes.find(name);
         if (it != _nodes.end()) {
             if (std::shared_ptr<NamedNode> ptr = it->second.lock()) {

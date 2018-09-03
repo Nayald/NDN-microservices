@@ -18,7 +18,7 @@
 #include "network/master_face.h"
 #include "fib.h"
 
-class NamedRouter : public Module {
+class NameRouter : public Module {
     const std::string _name;
 
     Fib _fib;
@@ -32,6 +32,7 @@ class NamedRouter : public Module {
     std::map<size_t, std::function<void(bool)>> _requests;
     std::map<size_t, std::shared_ptr<boost::asio::deadline_timer>> _request_timers;
     boost::asio::ip::udp::endpoint _manager_endpoint;
+    bool _check_prefix = false;
 
     std::unordered_map<size_t, std::shared_ptr<Face>> _egress_faces;
     std::shared_ptr<MasterFace> _tcp_consumer_master_face;
@@ -40,9 +41,9 @@ class NamedRouter : public Module {
     std::shared_ptr<MasterFace> _udp_producer_master_face;
 
 public:
-    NamedRouter(const std::string &name, uint16_t local_consumer_port, uint16_t local_producer_port, uint16_t local_command_port);
+    NameRouter(const std::string &name, uint16_t local_consumer_port, uint16_t local_producer_port, uint16_t local_command_port);
 
-    ~NamedRouter() override = default;
+    ~NameRouter() override = default;
 
     void run() override;
 

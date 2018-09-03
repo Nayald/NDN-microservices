@@ -42,15 +42,15 @@ void UdpFace::close() {
 }
 
 void UdpFace::send(const std::string &message) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), message));
+    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), std::make_shared<const ndn::Buffer>(message.c_str(), message.length())));
 }
 
 void UdpFace::send(const ndn::Interest &interest) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), std::string((const char *)interest.wireEncode().wire(), interest.wireEncode().size())));
+    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), interest.wireEncode().getBuffer()));
 }
 
 void UdpFace::send(const ndn::Data &data) {
-    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), std::string((const char *)data.wireEncode().wire(), data.wireEncode().size())));
+    _strand.dispatch(boost::bind(&UdpFace::sendImpl, shared_from_this(), data.wireEncode().getBuffer()));
 }
 
 void UdpFace::read() {
@@ -87,16 +87,15 @@ void UdpFace::readHandler(const boost::system::error_code &err, size_t bytes_tra
     }
 }
 
-void UdpFace::sendImpl(const std::string &message) {
-    _queue.push_back(message);
+void UdpFace::sendImpl(std::shared_ptr<const ndn::Buffer> &buffer) {
+    _queue.push_back(std::move(buffer));
     if (_queue.size() == 1) {
         write();
     }
 }
 
 void UdpFace::write() {
-    const std::string& message = _queue.front();
-    _socket.async_send_to(boost::asio::buffer(message), _endpoint,
+    _socket.async_send_to(boost::asio::buffer(*_queue.front()), _endpoint,
                           _strand.wrap(boost::bind(&UdpFace::writeHandler, shared_from_this(), _1, _2)));
 }
 
